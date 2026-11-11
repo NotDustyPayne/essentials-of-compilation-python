@@ -2,3 +2,4 @@
 /runtime.o
 /.venv/
 /.mypy_cache/
+/build/

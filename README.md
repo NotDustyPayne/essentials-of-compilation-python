@@ -70,6 +70,13 @@ python3.12 -m venv .venv && .venv/bin/pip install mypy   # one-time setup
 - `mypy.ini` lists which modules are fully annotated and checked with the
   `--strict` flags. Everything else gets mypy's default checks.
 - `stubs/lark` is a minimal type stub for the vendored lark parser.
+- `tools/progress.py` is the chapter 2 scoreboard. It runs every test in
+  `tests/var` through the passes in `compiler.py` and checks, after each pass,
+  that the output has the right *shape* (`tools/shapes.py`, from the book's
+  grammars) and the right *output* (interpreters, and finally real x86 via gcc).
+  `-v` shows every failure; `-k text` filters tests by name.
+- `tools/make_golden.py` writes the expected output (`.golden`) for new test
+  programs by running the definitional interpreter.
 - `tools/snapshot.py` prints a deterministic report: every module imports,
   the Lvar interpreter and type checker on `tests/`, AST printing, and the x86
   interpreter. Diff its output before and after a refactor.
