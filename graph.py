@@ -1,4 +1,5 @@
 from collections import deque
+from typing import Any
 
 class Edge:
     def __init__(self, src, tgt):
@@ -20,7 +21,7 @@ class Edge:
     def __eq__(self, other):
         return self.raw() == other.raw()
 
-Vertex = any
+Vertex = Any
 
 ################################################################################
 # Directed Adjacency List
@@ -165,10 +166,6 @@ class UndirectedAdjList(DirectedAdjList):
     def has_edge(self, u, v):
         return UEdge(u,v) in self.edge_set
 
-    def remove_edge(self, u, v):
-        self.out[u] = [w for w in self.out[u] if w != v]
-        self.edge_set.remove(UEdge(u,v))
-                
     def show(self):
       from graphviz import Graph
       dot = Graph(engine='neato')
@@ -183,11 +180,11 @@ class UndirectedAdjList(DirectedAdjList):
 # Topological Sort
 ################################################################################
 
-def topological_sort(G: DirectedAdjList) -> [Vertex]:
+def topological_sort(G: DirectedAdjList) -> list[Vertex]:
     in_degree = {u: 0 for u in G.vertices()}
     for e in G.edges():
         in_degree[e.target] += 1
-    queue = deque()
+    queue: deque[Vertex] = deque()
     for u in G.vertices():
         if in_degree[u] == 0:
             queue.append(u)

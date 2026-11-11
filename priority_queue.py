@@ -132,8 +132,8 @@ if __name__ == "__main__":
 
     # test Heap insert
     L = [4,3,5,1,2]
-    for k in L:
-        h.insert(k)
+    for n in L:
+        h.insert(n)
     for i in range(5, 0, -1):
         assert h.extract_max() == i
     
@@ -145,11 +145,11 @@ if __name__ == "__main__":
         assert L[i] == i + 1
 
     # test PriorityQeueue push and pop
-    L = {'a': 4, 'b': 3, 'c':5,'d':1,'e':2}
+    D = {'a': 4, 'b': 3, 'c':5,'d':1,'e':2}
     def less(x, y):
-        return L[x.key] < L[y.key]
+        return D[x.key] < D[y.key]
     Q = PriorityQueue(less)
-    for k, v in L.items():
+    for k, v in D.items():
         Q.push(k)
     P = ['c', 'a', 'b', 'e', 'd']
     for i in range(0, len(P)):
@@ -157,13 +157,13 @@ if __name__ == "__main__":
         
     # test increase_key
     Q = PriorityQueue(less)
-    for k, v in L.items():
+    for k, v in D.items():
         Q.push(k)
-    for k, v in L.items():
-        L[k] = v + 2
+    for k, v in D.items():
+        D[k] = v + 2
         Q.increase_key(k)
     for i in range(5, 0, -1):
         k = Q.pop()
-        assert L[k] == i + 2
+        assert D[k] == i + 2
 
     print('passed all tests')

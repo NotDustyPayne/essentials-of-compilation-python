@@ -56,3 +56,20 @@ repository.
   - `num_params`: Initialize this field to the number of parameters that the function
     had after the limit functions pass but before the select instructions pass.
   
+
+# Type checking (local addition)
+
+This copy of the support code has type hints, checked by mypy.
+
+```
+python3.12 -m venv .venv && .venv/bin/pip install mypy   # one-time setup
+.venv/bin/mypy .                                         # check everything
+.venv/bin/python tools/snapshot.py                       # behavior snapshot
+```
+
+- `mypy.ini` lists which modules are fully annotated and checked with the
+  `--strict` flags. Everything else gets mypy's default checks.
+- `stubs/lark` is a minimal type stub for the vendored lark parser.
+- `tools/snapshot.py` prints a deterministic report: every module imports,
+  the Lvar interpreter and type checker on `tests/`, AST printing, and the x86
+  interpreter. Diff its output before and after a refactor.

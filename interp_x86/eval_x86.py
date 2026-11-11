@@ -3,14 +3,25 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
+from typing import Any
 
 from utils import *
 
-from convert_x86 import convert_program
-from parser_x86 import x86_parser, x86_parser_instrs
+from interp_x86.convert_x86 import convert_program
+from interp_x86.parser_x86 import x86_parser, x86_parser_instrs
+from lark import Tree
+from x86_ast import X86Program
+
+# What a register, memory cell, or variable can hold while emulating:
+# an int, a FunPointer, the comparison flag 'e'/'l'/'g' (in EFLAGS),
+# or None for an uninitialized location.
+MachineValue = Any
+
+# Label -> the parsed instructions of that block.
+Blocks = dict[str, list[Tree]]
 
 
-def interp_x86(program):
+def interp_x86(program: X86Program) -> None:
     x86_program = convert_program(program)
     emu = X86Emulator(logging=False)
     x86_output = emu.eval_program(x86_program)
@@ -22,27 +33,28 @@ class FunPointer:
     fun_name: str
 
 class X86Emulator:
-    def __init__(self, logging=True):
-        self.registers = defaultdict(lambda: None)
-        self.memory = defaultdict(lambda: None)
-        self.variables = defaultdict(lambda: None)
+    def __init__(self, logging: bool = True) -> None:
+        self.registers: defaultdict[str, MachineValue] = defaultdict(lambda: None)
+        self.memory: defaultdict[int, MachineValue] = defaultdict(lambda: None)
+        self.variables: defaultdict[str, MachineValue] = defaultdict(lambda: None)
         self.logging = logging
         self.registers['rbp'] = 1000
         self.registers['rsp'] = 1000
 
-        self.global_vals = {}
+        self.global_vals: dict[str, MachineValue] = {}
 
-    def log(self, s):
+    def log(self, s: object) -> None:
         if self.logging:
             print(s)
 
-    def parse_and_eval_program(self, s):
+    def parse_and_eval_program(self, s: str) -> list[MachineValue]:
         p = x86_parser.parse(s)
+        return self.eval_program(p)
 
-    def eval_program(self, p):
+    def eval_program(self, p: Tree) -> list[MachineValue]:
         assert p.data == 'prog'
-        blocks = {}
-        output = []
+        blocks: Blocks = {}
+        output: list[MachineValue] = []
 
         # transform the program into a dict of blocks
         for b in p.children:
@@ -72,14 +84,14 @@ class X86Emulator:
 
         return output
 
-    def eval_instructions(self, s):
+    def eval_instructions(self, s: str) -> Any:  # a pandas DataFrame
         import pandas as pd
 
         p = x86_parser_instrs.parse(s)
 
         assert p.data == 'instrs'
-        blocks = {}
-        output = []
+        blocks: Blocks = {}
+        output: list[MachineValue] = []
 
         orig_memory = self.memory.copy()
         orig_registers = self.registers.copy()
@@ -118,14 +130,15 @@ class X86Emulator:
 
         return changes_df
 
-    def diff_dicts(self, d_after, d_orig):
+    def diff_dicts(self, d_after: dict[Any, MachineValue],
+                   d_orig: dict[Any, MachineValue]) -> list[Any]:
         keys_diff = []
         for k in d_after.keys():
             if d_orig[k] != d_after[k]:
                 keys_diff.append(k)
         return keys_diff
 
-    def print_state(self):
+    def print_state(self) -> Any:  # a pandas DataFrame
         import pandas as pd
 
         pd.set_option("display.max_rows", None)
@@ -144,11 +157,11 @@ class X86Emulator:
 
         return state_df
 
-    def print_mem(self, mem):
+    def print_mem(self, mem: dict[Any, MachineValue]) -> None:
         for k, v in mem.items():
             self.log(f' {k}:\t {v}')
 
-    def eval_imm(self, e) -> int:
+    def eval_imm(self, e: Tree) -> int:
         if e.data == 'int_a':
            v = int(e.children[0])
            if is_int64(v):
@@ -164,7 +177,7 @@ class X86Emulator:
             raise Exception('eval_imm: unknown immediate:', e)
 
 
-    def eval_arg(self, a):
+    def eval_arg(self, a: Tree) -> MachineValue:
         if a.data == 'reg_a':
             return self.registers[str(a.children[0])]
         elif a.data == 'var_a':
@@ -188,7 +201,7 @@ class X86Emulator:
         else:
             raise RuntimeError(f'Unknown arg in eval_arg: {a}')
 
-    def store_arg(self, a, v):
+    def store_arg(self, a: Tree, v: MachineValue) -> None:
         if a.data == 'reg_a':
             self.registers[str(a.children[0])] = v
         elif a.data == 'var_a':
@@ -211,7 +224,8 @@ class X86Emulator:
         else:
             raise RuntimeError(f'Unknown arg in store_arg: {a}')
 
-    def eval_instrs(self, instrs, blocks, output):
+    def eval_instrs(self, instrs: list[Tree], blocks: Blocks,
+                    output: list[MachineValue]) -> None:
         for instr in instrs:
             self.log(f'Evaluating instruction: {instr.pretty()}')
             if instr.data == 'pushq':
@@ -543,7 +557,7 @@ instrs = ['movq $1, %rax',
 if __name__ == "__main__":
     for prog in prog1, prog2, prog3, prog4, prog5:
         emu = X86Emulator(logging=True)
-        emu.eval_program(prog)
+        emu.parse_and_eval_program(prog)
 
     emu = X86Emulator(logging=False)
     for i in instrs:

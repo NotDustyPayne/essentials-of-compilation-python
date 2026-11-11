@@ -4,6 +4,12 @@ from sys import platform
 import ast
 from ast import *
 from dataclasses import dataclass
+import typing
+from typing import Any, Callable, Iterable, Mapping
+
+# `from ast import *` also defines ast.TypeVar, so use the qualified name.
+A = typing.TypeVar('A')
+B = typing.TypeVar('B')
 
 # move these to the compilers, use a method with overrides -Jeremy
 builtin_functions = \
@@ -29,298 +35,298 @@ tag_is_proxy_right_shift = 63
 indent_amount = 2
 
 
-def indent_stmt():
+def indent_stmt() -> str:
     return " " * indent_amount
 
 
-def indent():
+def indent() -> None:
     global indent_amount
     indent_amount += 2
 
 
-def dedent():
+def dedent() -> None:
     global indent_amount
     indent_amount -= 2
 
 
-def str_stmts(stmts):
+def str_stmts(stmts: Iterable[object]) -> str:
     """Render statements with one separator, even for legacy trailing-newline printers."""
     return '\n'.join(str(s).rstrip('\n') for s in stmts)
 
 
-def str_Module(self):
+def str_Module(self: ast.Module) -> str:
     body = '\n'.join([str(s) for s in self.body])
     return body
 
 
-Module.__str__ = str_Module
+setattr(Module, '__str__', str_Module)
 
 
-def repr_Module(self):
+def repr_Module(self: ast.Module) -> str:
     return 'Module(' + repr(self.body) + ')'
 
 
-Module.__repr__ = repr_Module
+setattr(Module, '__repr__', repr_Module)
 
 
-def str_Expr(self):
+def str_Expr(self: ast.Expr) -> str:
     return indent_stmt() + str(self.value)
 
 
-Expr.__str__ = str_Expr
+setattr(Expr, '__str__', str_Expr)
 
 
-def repr_Expr(self):
+def repr_Expr(self: ast.Expr) -> str:
     return indent_stmt() + 'Expr(' + repr(self.value) + ')'
 
 
-Expr.__repr__ = repr_Expr
+setattr(Expr, '__repr__', repr_Expr)
 
 
-def str_Pass(self):
+def str_Pass(self: ast.Pass) -> str:
     return indent_stmt() + 'pass'
 
 
-Pass.__str__ = str_Pass
+setattr(Pass, '__str__', str_Pass)
 
 
-def repr_Pass(self):
+def repr_Pass(self: ast.Pass) -> str:
     return indent_stmt() + 'Pass()'
 
 
-Pass.__repr__ = repr_Pass
+setattr(Pass, '__repr__', repr_Pass)
 
 
-def str_Assign(self):
+def str_Assign(self: ast.Assign) -> str:
     return indent_stmt() + str(self.targets[0]) + ' = ' + str(self.value)
 
 
-Assign.__str__ = str_Assign
+setattr(Assign, '__str__', str_Assign)
 
 
-def repr_Assign(self):
+def repr_Assign(self: ast.Assign) -> str:
     return indent_stmt() + 'Assign(' + repr(self.targets) + ', ' + repr(self.value) + ')'
 
 
-Assign.__repr__ = repr_Assign
+setattr(Assign, '__repr__', repr_Assign)
 
 
-def str_AnnAssign(self):
+def str_AnnAssign(self: ast.AnnAssign) -> str:
     return indent_stmt() + str(self.target) + ' : ' + str(self.annotation) + ' = ' + str(self.value)
 
 
-AnnAssign.__str__ = str_AnnAssign
+setattr(AnnAssign, '__str__', str_AnnAssign)
 
 
-def repr_AnnAssign(self):
+def repr_AnnAssign(self: ast.AnnAssign) -> str:
     return indent_stmt() + 'AnnAssign(' + repr(self.target) + ', ' \
            + repr(self.annotation) + ', ' + repr(self.value) + repr(self.simple) + ')'
 
 
-AnnAssign.__repr__ = repr_AnnAssign
+setattr(AnnAssign, '__repr__', repr_AnnAssign)
 
 
-def str_Return(self):
+def str_Return(self: ast.Return) -> str:
     return indent_stmt() + 'return ' + str(self.value)
 
 
-Return.__str__ = str_Return
+setattr(Return, '__str__', str_Return)
 
 
-def repr_Return(self):
+def repr_Return(self: ast.Return) -> str:
     return indent_stmt() + 'Return(' + repr(self.value) + ')'
 
 
-Return.__repr__ = repr_Return
+setattr(Return, '__repr__', repr_Return)
 
 
-def str_Name(self):
+def str_Name(self: ast.Name) -> str:
     if hasattr(self, 'has_type'):
         return self.id + ':' + str(self.has_type)
     else:
         return self.id
 
 
-Name.__str__ = str_Name
+setattr(Name, '__str__', str_Name)
 
 
-def repr_Name(self):
+def repr_Name(self: ast.Name) -> str:
     return 'Name(' + repr(self.id) + ')'
 
 
-Name.__repr__ = repr_Name
+setattr(Name, '__repr__', repr_Name)
 
 
-def str_Constant(self):
+def str_Constant(self: ast.Constant) -> str:
     return str(self.value)
 
 
-Constant.__str__ = str_Constant
+setattr(Constant, '__str__', str_Constant)
 
 
-def repr_Constant(self):
+def repr_Constant(self: ast.Constant) -> str:
     return 'Constant(' + repr(self.value) + ')'
 
 
-Constant.__repr__ = repr_Constant
+setattr(Constant, '__repr__', repr_Constant)
 
 
-def str_Add(self):
+def str_Add(self: ast.Add) -> str:
     return '+'
 
 
-Add.__str__ = str_Add
+setattr(Add, '__str__', str_Add)
 
 
-def repr_Add(self):
+def repr_Add(self: ast.Add) -> str:
     return 'Add()'
 
 
-Add.__repr__ = repr_Add
+setattr(Add, '__repr__', repr_Add)
 
 
-def str_Sub(self):
+def str_Sub(self: ast.Sub) -> str:
     return '-'
 
 
-Sub.__str__ = str_Sub
+setattr(Sub, '__str__', str_Sub)
 
 
-def repr_Sub(self):
+def repr_Sub(self: ast.Sub) -> str:
     return 'Sub()'
 
 
-Sub.__repr__ = repr_Sub
+setattr(Sub, '__repr__', repr_Sub)
 
 
-def str_Mult(self):
+def str_Mult(self: ast.Mult) -> str:
     return '*'
 
 
-Mult.__str__ = str_Mult
+setattr(Mult, '__str__', str_Mult)
 
 
-def repr_Mult(self):
+def repr_Mult(self: ast.Mult) -> str:
     return 'Mult()'
 
 
-Mult.__repr__ = repr_Mult
+setattr(Mult, '__repr__', repr_Mult)
 
 
-def str_And(self):
+def str_And(self: ast.And) -> str:
     return 'and'
 
 
-And.__str__ = str_And
+setattr(And, '__str__', str_And)
 
 
-def repr_And(self):
+def repr_And(self: ast.And) -> str:
     return 'And()'
 
 
-And.__repr__ = repr_And
+setattr(And, '__repr__', repr_And)
 
 
-def str_Or(self):
+def str_Or(self: ast.Or) -> str:
     return 'or'
 
 
-Or.__str__ = str_Or
+setattr(Or, '__str__', str_Or)
 
 
-def repr_Or(self):
+def repr_Or(self: ast.Or) -> str:
     return 'Or()'
 
 
-Or.__repr__ = repr_Or
+setattr(Or, '__repr__', repr_Or)
 
 
-def str_BinOp(self):
+def str_BinOp(self: ast.BinOp) -> str:
     return '(' + str(self.left) + ' ' + str(self.op) + ' ' + str(self.right) + ')'
 
 
-BinOp.__str__ = str_BinOp
+setattr(BinOp, '__str__', str_BinOp)
 
 
-def repr_BinOp(self):
+def repr_BinOp(self: ast.BinOp) -> str:
     return 'BinOp(' + repr(self.left) + ', ' + repr(self.op) + ', ' + repr(self.right) + ')'
 
 
-BinOp.__repr__ = repr_BinOp
+setattr(BinOp, '__repr__', repr_BinOp)
 
 
-def str_BoolOp(self):
+def str_BoolOp(self: ast.BoolOp) -> str:
     return '(' + str(self.values[0]) + ' ' + str(self.op) + ' ' + str(self.values[1]) + ')'
 
 
-BoolOp.__str__ = str_BoolOp
+setattr(BoolOp, '__str__', str_BoolOp)
 
 
-def repr_BoolOp(self):
+def repr_BoolOp(self: ast.BoolOp) -> str:
     return repr(self.values[0]) + ' ' + repr(self.op) + ' ' + repr(self.values[1])
 
 
-BoolOp.__repr__ = repr_BoolOp
+setattr(BoolOp, '__repr__', repr_BoolOp)
 
 
-def str_USub(self):
+def str_USub(self: ast.USub) -> str:
     return '-'
 
 
-USub.__str__ = str_USub
+setattr(USub, '__str__', str_USub)
 
 
-def repr_USub(self):
+def repr_USub(self: ast.USub) -> str:
     return 'USub()'
 
 
-USub.__repr__ = repr_USub
+setattr(USub, '__repr__', repr_USub)
 
 
-def str_Not(self):
+def str_Not(self: ast.Not) -> str:
     return 'not'
 
 
-Not.__str__ = str_Not
+setattr(Not, '__str__', str_Not)
 
 
-def repr_Not(self):
+def repr_Not(self: ast.Not) -> str:
     return 'Not()'
 
 
-Not.__repr__ = repr_Not
+setattr(Not, '__repr__', repr_Not)
 
 
-def str_UnaryOp(self):
+def str_UnaryOp(self: ast.UnaryOp) -> str:
     return str(self.op) + '(' + str(self.operand) + ')'
 
 
-UnaryOp.__str__ = str_UnaryOp
+setattr(UnaryOp, '__str__', str_UnaryOp)
 
 
-def repr_UnaryOp(self):
+def repr_UnaryOp(self: ast.UnaryOp) -> str:
     return 'UnaryOp(' + repr(self.op) + ', ' + repr(self.operand) + ')'
 
 
-UnaryOp.__repr__ = repr_UnaryOp
+setattr(UnaryOp, '__repr__', repr_UnaryOp)
 
 
-def str_Call(self):
+def str_Call(self: ast.Call) -> str:
     return str(self.func) \
            + '(' + ', '.join([str(arg) for arg in self.args]) + ')'
 
 
-Call.__str__ = str_Call
+setattr(Call, '__str__', str_Call)
 
 
-def repr_Call(self):
+def repr_Call(self: ast.Call) -> str:
     return 'Call(' + repr(self.func) + ', ' + repr(self.args) + ')'
 
 
-Call.__repr__ = repr_Call
+setattr(Call, '__repr__', repr_Call)
 
 
-def str_If(self):
+def str_If(self: ast.If) -> str:
     header = indent_stmt() + 'if ' + str(self.test) + ':\n'
     indent()
     thn = str_stmts(self.body)
@@ -329,33 +335,33 @@ def str_If(self):
     return header + thn + '\n' + indent_stmt() + 'else:\n' + els
 
 
-If.__str__ = str_If
+setattr(If, '__str__', str_If)
 
 
-def repr_If(self):
+def repr_If(self: ast.If) -> str:
     return 'If(' + repr(self.test) + ', ' + repr(self.body) + ', ' + repr(self.orelse) + ')'
 
 
-If.__repr__ = repr_If
+setattr(If, '__repr__', repr_If)
 
 
-def str_IfExp(self):
+def str_IfExp(self: ast.IfExp) -> str:
     return '(' + str(self.body) + ' if ' + str(self.test) + \
            ' else ' + str(self.orelse) + ')'
 
 
-IfExp.__str__ = str_IfExp
+setattr(IfExp, '__str__', str_IfExp)
 
 
-def repr_IfExp(self):
+def repr_IfExp(self: ast.IfExp) -> str:
     return 'IfExp(' + repr(self.test) + ', ' + repr(self.body) + \
         ', ' + repr(self.orelse) + ')'
 
 
-IfExp.__repr__ = repr_IfExp
+setattr(IfExp, '__repr__', repr_IfExp)
 
 
-def str_While(self):
+def str_While(self: ast.While) -> str:
     header = indent_stmt() + 'while ' + str(self.test) + ':\n'
     indent()
     body = str_stmts(self.body)
@@ -363,173 +369,173 @@ def str_While(self):
     return header + body
 
 
-While.__str__ = str_While
+setattr(While, '__str__', str_While)
 
 
-def repr_While(self):
+def repr_While(self: ast.While) -> str:
     return 'While(' + repr(self.test) + ', ' + repr(self.body) + ', ' + repr(self.orelse) + ')'
 
 
-While.__repr__ = repr_While
+setattr(While, '__repr__', repr_While)
 
 
-def str_Compare(self):
+def str_Compare(self: ast.Compare) -> str:
     return str(self.left) + ' ' + str(self.ops[0]) + ' ' + str(self.comparators[0])
 
 
-Compare.__str__ = str_Compare
+setattr(Compare, '__str__', str_Compare)
 
 
-def repr_Compare(self):
+def repr_Compare(self: ast.Compare) -> str:
     return 'Compare(' + repr(self.left) + ', ' + repr(self.ops) + ', ' \
            + repr(self.comparators) + ')'
 
 
-Compare.__repr__ = repr_Compare
+setattr(Compare, '__repr__', repr_Compare)
 
 
-def str_Eq(self):
+def str_Eq(self: ast.Eq) -> str:
     return '=='
 
 
-Eq.__str__ = str_Eq
+setattr(Eq, '__str__', str_Eq)
 
 
-def repr_Eq(self):
+def repr_Eq(self: ast.Eq) -> str:
     return 'Eq()'
 
 
-Eq.__repr__ = repr_Eq
+setattr(Eq, '__repr__', repr_Eq)
 
 
-def str_NotEq(self):
+def str_NotEq(self: ast.NotEq) -> str:
     return '!='
 
 
-NotEq.__str__ = str_NotEq
+setattr(NotEq, '__str__', str_NotEq)
 
 
-def repr_NotEq(self):
+def repr_NotEq(self: ast.NotEq) -> str:
     return 'NotEq()'
 
 
-NotEq.__repr__ = repr_NotEq
+setattr(NotEq, '__repr__', repr_NotEq)
 
 
-def str_Lt(self):
+def str_Lt(self: ast.Lt) -> str:
     return '<'
 
 
-Lt.__str__ = str_Lt
+setattr(Lt, '__str__', str_Lt)
 
 
-def repr_Lt(self):
+def repr_Lt(self: ast.Lt) -> str:
     return 'Lt()'
 
 
-Lt.__repr__ = repr_Lt
+setattr(Lt, '__repr__', repr_Lt)
 
 
-def str_LtE(self):
+def str_LtE(self: ast.LtE) -> str:
     return '<='
 
 
-LtE.__str__ = str_LtE
+setattr(LtE, '__str__', str_LtE)
 
 
-def repr_LtE(self):
+def repr_LtE(self: ast.LtE) -> str:
     return 'LtE()'
 
 
-LtE.__repr__ = repr_LtE
+setattr(LtE, '__repr__', repr_LtE)
 
 
-def str_Gt(self):
+def str_Gt(self: ast.Gt) -> str:
     return '>'
 
 
-Gt.__str__ = str_Gt
+setattr(Gt, '__str__', str_Gt)
 
 
-def repr_Gt(self):
+def repr_Gt(self: ast.Gt) -> str:
     return 'Gt()'
 
 
-Gt.__repr__ = repr_Gt
+setattr(Gt, '__repr__', repr_Gt)
 
 
-def str_GtE(self):
+def str_GtE(self: ast.GtE) -> str:
     return '>='
 
 
-GtE.__str__ = str_GtE
+setattr(GtE, '__str__', str_GtE)
 
 
-def repr_GtE(self):
+def repr_GtE(self: ast.GtE) -> str:
     return 'GtE()'
 
 
-GtE.__repr__ = repr_GtE
+setattr(GtE, '__repr__', repr_GtE)
 
 
-def str_Is(self):
+def str_Is(self: ast.Is) -> str:
     return 'is'
 
 
-Is.__str__ = str_Is
+setattr(Is, '__str__', str_Is)
 
 
-def repr_Is(self):
+def repr_Is(self: ast.Is) -> str:
     return 'Is()'
 
 
-Is.__repr__ = repr_Is
+setattr(Is, '__repr__', repr_Is)
 
 
-def str_Tuple(self):
+def str_Tuple(self: ast.Tuple) -> str:
     return '(' + ', '.join([str(e) for e in self.elts]) + ',)'
 
 
-Tuple.__str__ = str_Tuple
+setattr(Tuple, '__str__', str_Tuple)
 
 
-def repr_Tuple(self):
+def repr_Tuple(self: ast.Tuple) -> str:
     return 'Tuple(' + repr(self.elts) + ')'
 
 
-Tuple.__repr__ = repr_Tuple
+setattr(Tuple, '__repr__', repr_Tuple)
 
 
-def str_List(self):
+def str_List(self: ast.List) -> str:
     return '[' + ', '.join([str(e) for e in self.elts]) + ']'
 
 
-ast.List.__str__ = str_List
+setattr(ast.List, '__str__', str_List)
 
 
-def repr_List(self):
+def repr_List(self: ast.List) -> str:
     return 'List(' + repr(self.elts) + ')'
 
 
-ast.List.__repr__ = repr_List
+setattr(ast.List, '__repr__', repr_List)
 
 
-def str_Subscript(self):
+def str_Subscript(self: ast.Subscript) -> str:
     return str(self.value) + '[' + str(self.slice) + ']'
 
 
-Subscript.__str__ = str_Subscript
+setattr(Subscript, '__str__', str_Subscript)
 
 
-def repr_Subscript(self):
+def repr_Subscript(self: ast.Subscript) -> str:
     return 'Subscript(' + repr(self.value) + ', ' + repr(self.slice) \
            + ', ' + repr(self.ctx) + ')'
 
 
-Subscript.__repr__ = repr_Subscript
+setattr(Subscript, '__repr__', repr_Subscript)
 
 
-def str_FunctionDef(self):
+def str_FunctionDef(self: ast.FunctionDef) -> str:
     if isinstance(self.args, ast.arguments):
         params = ', '.join([a.arg + ' : ' + str(a.annotation) for a in self.args.args])
     else:
@@ -552,16 +558,16 @@ def str_FunctionDef(self):
            ' -> ' + str(self.returns) + ':\n' + body + '\n'
 
 
-def repr_FunctionDef(self):
+def repr_FunctionDef(self: ast.FunctionDef) -> str:
     return 'FunctionDef(' + self.name + ',' + repr(self.args) + ',' + \
            repr(self.body) + ')'
 
 
-FunctionDef.__str__ = str_FunctionDef
-FunctionDef.__repr__ = repr_FunctionDef
+setattr(FunctionDef, '__str__', str_FunctionDef)
+setattr(FunctionDef, '__repr__', repr_FunctionDef)
 
 
-def str_Lambda(self):
+def str_Lambda(self: ast.Lambda) -> str:
     if isinstance(self.args, ast.arguments):
         params = ', '.join([a.arg for a in self.args.args])
     else:
@@ -570,43 +576,43 @@ def str_Lambda(self):
     return '(lambda ' + params + ': ' + body + ')'
 
 
-def repr_Lambda(self):
+def repr_Lambda(self: ast.Lambda) -> str:
     return 'Lambda(' + repr(self.args) + ',' + repr(self.body) + ')'
 
 
-Lambda.__str__ = str_Lambda
-Lambda.__repr__ = repr_Lambda
+setattr(Lambda, '__str__', str_Lambda)
+setattr(Lambda, '__repr__', repr_Lambda)
 
 
-def str_ImportFrom(self):
+def str_ImportFrom(self: ast.ImportFrom) -> str:
     return indent_stmt() + 'from' + ' X ' + 'import' + ' Y\n'
 
-def repr_ImportFrom(self):
+def repr_ImportFrom(self: ast.ImportFrom) -> str:
     return 'ImportFrom()'
 
-ImportFrom.__str__ = str_ImportFrom
-ImportFrom.__repr__ = repr_ImportFrom
+setattr(ImportFrom, '__str__', str_ImportFrom)
+setattr(ImportFrom, '__repr__', repr_ImportFrom)
 
 
 ################################################################################
 # __eq__ and __hash__ for classes in the ast module
 ################################################################################
 
-def eq_Name(self, other):
+def eq_Name(self: ast.Name, other: object) -> bool:
     if isinstance(other, Name):
         return self.id == other.id
     else:
         return False
 
 
-Name.__eq__ = eq_Name
+setattr(Name, '__eq__', eq_Name)
 
 
-def hash_Name(self):
+def hash_Name(self: ast.Name) -> int:
     return hash(self.id)
 
 
-Name.__hash__ = hash_Name
+setattr(Name, '__hash__', hash_Name)
 
 ################################################################################
 # Generating unique names
@@ -615,7 +621,7 @@ Name.__hash__ = hash_Name
 name_id = 0
 
 
-def generate_name(name):
+def generate_name(name: str) -> str:
     global name_id
     ls = name.split('.')
     new_id = name_id
@@ -630,11 +636,11 @@ def generate_name(name):
 class Type:
     pass
 
-def make_assigns(bs):
+def make_assigns(bs: Iterable[tuple[expr, expr]]) -> list[stmt]:
     return [Assign([x], rhs) for (x, rhs) in bs]
 
 
-def make_begin(bs, e):
+def make_begin(bs: list[tuple[expr, expr]], e: expr) -> expr:
     if len(bs) > 0:
         return Begin([Assign([x], rhs) for (x, rhs) in bs], e)
     else:
@@ -648,7 +654,7 @@ class Cast(expr):
     target: Type
     __match_args__ = ("body", "source", "target")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '(' + str(self.body) + ' : ' + str(self.source) + ' => ' + str(self.target) + ')'
 
 
@@ -660,7 +666,7 @@ class AnnLambda(expr):
     body: expr
     __match_args__ = ("params", "returns", "body")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'lambda [' + \
                ', '.join([x + ':' + str(t) for (x, t) in self.params]) + '] -> ' \
                + str(self.returns) + ': ' + str(self.body)
@@ -673,7 +679,7 @@ class Inst(expr):
     type_args: dict[str, Type]
     __match_args__ = ("generic", "type_args")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.generic) + str(self.type_args)
 
 # An uninitialized value of a given type.
@@ -683,16 +689,16 @@ class Uninitialized(expr):
     ty: Type
     __match_args__ = ("ty",)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'uninit[' + str(self.ty) + ']'
 
 
 @dataclass
 class CProgram:
     __match_args__ = ("body",)
-    body: list[stmt]
+    body: dict[str, list[stmt]]
 
-    def __str__(self):
+    def __str__(self) -> str:
         result = []
         for (l, ss) in self.body.items():
             block = l + ':\n'
@@ -708,7 +714,7 @@ class CProgramDefs:
     defs: list[stmt]
     __match_args__ = ("defs",)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '\n'.join([str(d) for d in self.defs]) + '\n'
 
 
@@ -717,7 +723,7 @@ class Goto(stmt):
     label: str
     __match_args__ = ("label",)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'goto ' + self.label
 
 
@@ -727,7 +733,7 @@ class Allocate(expr):
     ty: Type
     __match_args__ = ("length", "ty")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'allocate(' + str(self.length) + ',' + str(self.ty) + ')'
 
 
@@ -737,7 +743,7 @@ class AllocateArray(expr):
     ty: Type
     __match_args__ = ("length", "ty")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'allocate_array(' + str(self.length) + ',' + str(self.ty) + ')'
 
 
@@ -748,7 +754,7 @@ class AllocateClosure(expr):
     arity: int
     __match_args__ = ("length", "ty", "arity")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'alloc_clos(' + str(self.length) + ',' + str(self.ty) \
                + ',' + str(self.arity) + ')'
 
@@ -763,7 +769,7 @@ class Collect(stmt):
     size: int
     __match_args__ = ("size",)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'collect(' + str(self.size) + ')\n'
 
 
@@ -773,7 +779,7 @@ class Begin(expr):
     body: list[stmt]
     result: expr
 
-    def __str__(self):
+    def __str__(self) -> str:
         indent()
         stmts = '\n'.join([str(s) for s in self.body])
         stmts += '\n' if self.body else ''
@@ -787,31 +793,31 @@ class GlobalValue(expr):
     name: str
     __match_args__ = ("name",)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.name)
 
 
 @dataclass(eq=True)
 class IntType(Type):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'int'
 
 
 @dataclass(eq=True)
 class BoolType(Type):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'bool'
 
 
 @dataclass(eq=True)
 class VoidType(Type):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'void'
 
 
 @dataclass(eq=True)
 class Bottom(Type):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'bottom'
 
 
@@ -820,7 +826,7 @@ class TupleType(Type):
     types: list[Type]
     __match_args__ = ("types",)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'tuple[' + ','.join([str(p) for p in self.types]) + ']'
 
 
@@ -829,17 +835,18 @@ class ListType(Type):
     elt_type: Type
     __match_args__ = ("elt_type",)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'list[' + str(self.elt_type) + ']'
 
 
+# Deliberately shadows ast.FunctionType (from `from ast import *`).
 @dataclass(eq=True)
-class FunctionType(Type):
+class FunctionType(Type):  # type: ignore[no-redef]
     param_types: list[Type]
     ret_type: Type
     __match_args__ = ("param_types", "ret_type")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'Callable[[' + ','.join([str(p) for p in self.param_types]) + ']' \
                + ', ' + str(self.ret_type) + ']'
 
@@ -847,7 +854,7 @@ class FunctionType(Type):
 class GenericVar(Type):
     id: str
     __match_args__ = ("id",)
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.id)
 
 @dataclass(eq=True)
@@ -856,7 +863,7 @@ class AllType(Type):
     typ: Type
     __match_args__ = ("params", "typ")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '∀ ' + ','.join([str(p) for p in self.params]) + '(' \
             + str(self.typ) + ')'
 
@@ -866,7 +873,7 @@ class FunRef(expr):
     arity: int
     __match_args__ = ("name", "arity")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '{' + self.name + '}'
 
 
@@ -876,7 +883,7 @@ class TailCall(stmt):
     args: list[expr]
     __match_args__ = ("func", "args")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'tail ' + str(self.func) + '(' + ', '.join([str(e) for e in self.args]) + ')\n'
 
 
@@ -887,7 +894,7 @@ class Closure(expr):
     args: list[expr]
     __match_args__ = ("arity", "args")
 
-    def __str__(self):
+    def __str__(self) -> str:
         if hasattr(self, 'has_type'):
             typ = ':' + str(self.has_type)
         else:
@@ -901,7 +908,7 @@ class Inject(expr):
     typ: Type
     __match_args__ = ("value", "typ")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'inject(' + str(self.value) + ', ' + str(self.typ) + ')'
 
 
@@ -911,7 +918,7 @@ class Project(expr):
     typ: Type
     __match_args__ = ("value", "typ")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'project(' + str(self.value) + ', ' + str(self.typ) + ')'
 
 
@@ -920,7 +927,7 @@ class TagOf(expr):
     value: expr
     __match_args__ = ("value",)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'tagof(' + str(self.value) + ')'
 
 
@@ -930,13 +937,13 @@ class ValueOf(expr):
     typ: Type
     __match_args__ = ("value", "typ")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'valueof(' + str(self.value) + ', ' + str(self.typ) + ')'
 
 
 @dataclass(eq=True)
 class AnyType(Type):
-    def __str__(self):
+    def __str__(self) -> str:
         return 'Any'
 
 
@@ -944,7 +951,7 @@ class AnyType(Type):
 class ProxyOrTupleType(Type):
     elt_types: list[Type]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'POrTuple[' + ','.join([str(t) for t in self.elt_types]) + ']'
 
 
@@ -952,7 +959,7 @@ class ProxyOrTupleType(Type):
 class ProxyOrListType(Type):
     elt_type: Type
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'POrList[' + str(self.elt_type) + ']'
 
 
@@ -963,7 +970,7 @@ class TupleProxy(expr):
     source: Type
     target: Type
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'tuple_proxy(' + str(self.value) + ', ' + str(self.source) \
                + ', ' + str(self.target) + ')'
 
@@ -972,7 +979,7 @@ class TupleProxy(expr):
 class RawTuple(expr):
     elts: list[expr]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '[[' + ','.join([str(e) for e in self.elts]) + ']]'
 
 
@@ -984,7 +991,7 @@ class ListProxy(expr):
     source: Type
     target: Type
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'array_proxy(' + str(self.value) + ', ' + str(self.source) \
                + ', ' + str(self.target) + ')'
 
@@ -993,7 +1000,7 @@ class ListProxy(expr):
 class InjectTuple(expr):
     value: expr
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'inject_tuple[' + str(self.value) + ']'
 
 
@@ -1002,7 +1009,7 @@ class InjectTupleProxy(expr):
     value: expr
     typ: Type
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'inject_tuple_proxy[' + str(self.value) + ' from ' + str(self.typ) + ']'
 
 
@@ -1010,7 +1017,7 @@ class InjectTupleProxy(expr):
 class InjectList(expr):
     value: expr
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'inject_array[' + str(self.value) + ']'
 
 
@@ -1019,7 +1026,7 @@ class InjectListProxy(expr):
     value: expr
     typ: Type
 
-    def __str__(self):
+    def __str__(self) -> str:
         return 'inject_array_proxy[' + str(self.value) + ' from ' + str(self.typ) + ']'
 
 
@@ -1039,8 +1046,8 @@ class ProxiedTuple(Value):
     tup: Value
     reads: list[Value]
 
-    def __str__(self):
-        return 'proxy[' + str(self.value) + ']'
+    def __str__(self) -> str:
+        return 'proxy[' + str(self.tup) + ']'
 
 
 @dataclass(eq=True)
@@ -1049,8 +1056,8 @@ class ProxiedList(Value):
     read: Value
     write: Value
 
-    def __str__(self):
-        return 'proxy[' + str(self.value) + ']'
+    def __str__(self) -> str:
+        return 'proxy[' + str(self.tup) + ']'
 
 ################################################################################
 
@@ -1072,28 +1079,28 @@ mask_64 = (1<<64)-1
 
 offset_64 = 1<<63
 
-def to_unsigned(x):
+def to_unsigned(x: int) -> int:
     return x & mask_64
 
-def to_signed(x):
+def to_signed(x: int) -> int:
     return ((x + offset_64) & mask_64) - offset_64
 
-def add64(x,y):
+def add64(x: int, y: int) -> int:
     return to_signed(x+y)
 
-def sub64(x,y):
+def sub64(x: int, y: int) -> int:
     return to_signed(x-y)
 
-def mul64(x,y):
+def mul64(x: int, y: int) -> int:
     return to_signed(x*y)
 
-def neg64(x):
+def neg64(x: int) -> int:
     return to_signed(-x)
 
-def xor64(x,y):
+def xor64(x: int, y: int) -> int:
     return to_signed(x^y)
 
-def is_int64(x) -> bool:
+def is_int64(x: object) -> bool:
     return isinstance(x,int) and (x >= min_int64 and x <= max_int64)
 
 def input_int() -> int:
@@ -1104,8 +1111,9 @@ def input_int() -> int:
     x = min(max_int64,max(min_int64,x))
     return x
 
-def unzip(ls):
-    xs, ys = [], []
+def unzip(ls: Iterable[tuple[A, B]]) -> tuple[list[A], list[B]]:
+    xs: list[A] = []
+    ys: list[B] = []
     for (x, y) in ls:
         xs += [x]
         ys += [y]
@@ -1119,7 +1127,7 @@ def align(n: int, alignment: int) -> int:
         return n + (alignment - n % alignment)
 
 
-def bool2int(b):
+def bool2int(b: object) -> int:
     if b:
         return 1
     else:
@@ -1136,17 +1144,17 @@ def label_name(n: str) -> str:
 tracing = False
 
 
-def enable_tracing():
+def enable_tracing() -> None:
     global tracing
     tracing = True
 
 
-def trace(msg):
+def trace(msg: object) -> None:
     if tracing:
         print(msg, file=sys.stderr)
 
 
-def is_python_extension(filename):
+def is_python_extension(filename: str) -> bool:
     s = os.path.splitext(filename)
     if len(s) > 1:
         return s[1] == ".py"
@@ -1154,11 +1162,17 @@ def is_python_extension(filename):
         return False
 
 
+# Pass name -> type checker / interpreter for that pass's output.
+# Each pass produces a different kind of program, so the argument is Any.
+TypeCheckDict = Mapping[str, Callable[[Any], object]]
+InterpDict = Mapping[str, Callable[[Any], object]]
+
+
 # Given the `ast` output of a pass and a test program (root) name,
 # runs the interpreter on the program and compares the output to the
 # expected "golden" output.
-def test_pass(passname, interp_dict, program_root, ast,
-              compiler_name):
+def test_pass(passname: str, interp_dict: InterpDict, program_root: str, ast: Any,
+              compiler_name: str) -> int:
     if passname in interp_dict.keys():
         input_file = program_root + '.in'
         output_file = program_root + '.out'
@@ -1187,15 +1201,18 @@ def test_pass(passname, interp_dict, program_root, ast,
         return 0  # ??
 
 
-def compile_and_test(compiler, compiler_name,
-                     type_check_dict, interp_dict,
-                     program_filename):
+def compile_and_test(compiler: Any, compiler_name: str,
+                     type_check_dict: TypeCheckDict, interp_dict: InterpDict,
+                     program_filename: str) -> tuple[int, int, int]:
     total_passes = 0
     successful_passes = 0
     successful_test = 0
-    from eval_x86 import interp_x86
+    from interp_x86.eval_x86 import interp_x86
 
     program_root = os.path.splitext(program_filename)[0]
+    # `program` changes type from pass to pass (Module, CProgram, X86Program, ...),
+    # so the driver treats it dynamically.
+    program: Any
     with open(program_filename) as source:
         program = parse(source.read())
 
@@ -1505,7 +1522,7 @@ def compile_and_test(compiler, compiler_name,
     return (successful_passes, total_passes, successful_test)
 
 
-def trace_ast_and_concrete(ast):
+def trace_ast_and_concrete(ast: object) -> None:
     trace("concrete syntax:")
     trace(ast)
     trace("")
@@ -1514,9 +1531,11 @@ def trace_ast_and_concrete(ast):
 
 
 # This function compiles the program without any testing
-def compile(compiler, compiler_name, type_check_L, type_check_C,
-            program_filename):
+def compile(compiler: Any, compiler_name: str, type_check_L: Callable[[Any], object],
+            type_check_C: Callable[[Any], object] | None,
+            program_filename: str) -> None:
     program_root = os.path.splitext(program_filename)[0]
+    program: Any
     with open(program_filename) as source:
         program = parse(source.read())
 
@@ -1613,8 +1632,9 @@ def compile(compiler, compiler_name, type_check_L, type_check_C,
 # C intermediate language, run all the passes in the compiler,
 # checking that the resulting programs produce output that matches the
 # golden file.
-def run_one_test(test, lang, compiler, compiler_name,
-                 type_check_dict, interp_dict):
+def run_one_test(test: str, lang: str, compiler: Any, compiler_name: str,
+                 type_check_dict: TypeCheckDict,
+                 interp_dict: InterpDict) -> tuple[int, int, int]:
 #    test_root = os.path.splitext(test)[0]
 #    test_name = os.path.basename(test_root)
     return compile_and_test(compiler, compiler_name, type_check_dict,
@@ -1626,16 +1646,17 @@ def run_one_test(test, lang, compiler, compiler_name,
 # for the C intermediate language, test the compiler on all the tests
 # in the directory of for the given language, i.e., all the
 # python files in ./tests/<language>.
-def run_tests(lang, compiler, compiler_name, type_check_dict, interp_dict):
+def run_tests(lang: str, compiler: Any, compiler_name: str,
+              type_check_dict: TypeCheckDict, interp_dict: InterpDict) -> int:
     # Collect all the test programs for this language.
     homedir = os.getcwd()
     directory = homedir + '/tests/' + lang + '/'
     if not os.path.isdir(directory):
         raise Exception('missing directory for test programs: ' \
                         + directory)
+    tests: list[str] = []
     for (dirpath, dirnames, filenames) in os.walk(directory):
-        tests = filter(is_python_extension, filenames)
-        tests = [dirpath + t for t in tests]
+        tests = [dirpath + t for t in filter(is_python_extension, filenames)]
         break
     # Compile and run each test program, comparing output to the golden file.
     successful_passes = 0

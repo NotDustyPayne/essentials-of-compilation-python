@@ -11,10 +11,12 @@ import compiler
 from interp_Lvar import interp_Lvar
 from interp_x86.eval_x86 import interp_x86
 from utils import is_python_extension
+from typing import Any, Callable
 
 # The interp_and_check function runs the interpreter on the program
 # AST and compares the output to the expected output in the golden file.
-def interp_and_check(program_filename, program_ast, interpreter, passname):
+def interp_and_check(program_filename: str, program_ast: Any,
+                     interpreter: Callable[[Any], None], passname: str) -> None:
   # redirect standard input and output
   program_root = os.path.splitext(program_filename)[0]
   input_file = program_root + '.in'
@@ -40,7 +42,7 @@ def interp_and_check(program_filename, program_ast, interpreter, passname):
 # The execute_and_check function prints the AST to an assembly file,
 # uses gcc to compile it into an executable, runs the executable,
 # and compares the output to the expected output in the golden file.
-def execute_and_check(program_filename, program_ast):
+def execute_and_check(program_filename: str, program_ast: object) -> None:
   program_root = os.path.splitext(program_filename)[0]
 
   # Write the assembly file

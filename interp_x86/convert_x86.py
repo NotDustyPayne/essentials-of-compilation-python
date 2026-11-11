@@ -7,15 +7,17 @@ from lark import Tree
 from utils import GlobalValue, label_name
 from x86_ast import *
 
+from typing import Any
 
-def convert_int(value):
+
+def convert_int(value: int) -> Tree:
     return Tree("int_a", [value])    
     # if value >= 0:
     #     return Tree("int_a", [value])
     # else:
     #     return Tree("neg_a", [Tree("int_a", [-value])])
 
-def convert_arg(arg):
+def convert_arg(arg: Any) -> Tree:
     match arg:
         case Reg(id):
             return Tree('reg_a', [id])
@@ -32,10 +34,10 @@ def convert_arg(arg):
         case _:
             raise Exception('convert_arg: unhandled ' + repr(arg))
 
-def convert_instr(instr):
-    match instr:
-        case Instr(instr, args):
-            return Tree(instr, [convert_arg(arg) for arg in args])
+def convert_instr(i: instr) -> Tree:
+    match i:
+        case Instr(name, args):
+            return Tree(name, [convert_arg(arg) for arg in args])
         case Callq(func, args):
             return Tree('callq', [func])
         case Jump(label):
@@ -43,16 +45,18 @@ def convert_instr(instr):
         case JumpIf(cc, label):
             return Tree('j' + cc, [label])
         case _:
-            raise Exception('error in convert_instr, unhandled ' + repr(instr))
+            raise Exception('error in convert_instr, unhandled ' + repr(i))
 
-def convert_program(p):
+def convert_program(p: X86Program) -> Tree:
     if isinstance(p.body, list):
         main_instrs = [convert_instr(instr) for instr in p.body]
         main_block = Tree('block', ['main'] + main_instrs)
         return Tree('prog', [main_block])
     elif isinstance(p.body, dict):
-        blocks = []
+        blocks: list[Tree] = []
         for (l, ss) in p.body.items():
             blocks.append(Tree('block',
                                [l] + [convert_instr(instr) for instr in ss]))
         return Tree('prog', blocks)
+    else:
+        raise Exception('convert_program: unexpected body ' + repr(p.body))

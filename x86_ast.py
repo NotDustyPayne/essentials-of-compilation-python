@@ -11,7 +11,7 @@ from utils import dedent, indent, indent_stmt, label_name
 class X86Program:
     body: dict[str, list[instr]] | list[instr]
 
-    def __str__(self):
+    def __str__(self) -> str:
         result = ''
         if isinstance(self.body, dict):
             for (l,ss) in self.body.items():
@@ -37,7 +37,7 @@ class X86Program:
 class X86ProgramDefs:
     defs: list[ast.FunctionDef]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "\n".join([str(d) for d in self.defs])
 
 class instr: ...
@@ -54,11 +54,11 @@ class Instr(instr):
         object.__setattr__(self, 'instr', name)
         object.__setattr__(self, 'args', tuple(args))
 
-    def source(self):
+    def source(self) -> arg:
         return self.args[0]
-    def target(self):
+    def target(self) -> arg:
         return self.args[-1]
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + self.instr + ' ' + ', '.join(str(a) for a in self.args)
 
 @dataclass(frozen=True, eq=False)
@@ -66,7 +66,7 @@ class Callq(instr):
     func: str
     num_args: int
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'callq' + ' ' + label_name(self.func)
 
 @dataclass(frozen=True, eq=False)
@@ -74,7 +74,7 @@ class IndirectCallq(instr):
     func: arg
     num_args: int
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'callq' + ' *' + str(self.func)
 
 @dataclass(frozen=True, eq=False)
@@ -82,21 +82,21 @@ class JumpIf(instr):
     cc: str
     label: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'j' + self.cc + ' ' + label_name(self.label)
 
 @dataclass(frozen=True, eq=False)
 class Jump(instr):
     label: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'jmp ' + label_name(self.label)
 
 @dataclass(frozen=True, eq=False)
 class IndirectJump(instr):
     target: location
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'jmp *' + str(self.target)
 
 @dataclass(frozen=True, eq=False)
@@ -104,28 +104,28 @@ class TailJump(instr):
     func: arg
     arity: int
 
-    def __str__(self):
+    def __str__(self) -> str:
         return indent_stmt() + 'tailjmp ' + str(self.func)
 
 @dataclass(frozen=True)
 class Variable(location):
     id: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.id
 
 @dataclass(frozen=True)
 class Immediate(arg):
     value: int
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '$' +  str(self.value)
 
 @dataclass(frozen=True)
 class Reg(location):
     id: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return '%' + self.id
 
 @dataclass(frozen=True)
@@ -137,12 +137,12 @@ class Deref(arg):
     reg: str
     offset: int
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.offset) + '(%' + self.reg + ')'
 
 @dataclass(frozen=True)
 class Global(arg):
     name: str
 
-    def __str__(self):
+    def __str__(self) -> str:
         return label_name(self.name) + "(%rip)"

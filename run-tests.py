@@ -7,21 +7,21 @@ sys.path.append('../python-student-support-code/interp_x86')
 import compiler
 import interp_Lvar
 import type_check_Lvar
-from utils import run_tests, run_one_test, enable_tracing
+from utils import run_tests, run_one_test, enable_tracing, InterpDict, TypeCheckDict
 from interp_x86.eval_x86 import interp_x86
 
 enable_tracing()
 
-compiler = compiler.Compiler()
+C = compiler.Compiler()
 
 typecheck_Lvar = type_check_Lvar.TypeCheckLvar().type_check
 
-typecheck_dict = {
+typecheck_dict: TypeCheckDict = {
     'source': typecheck_Lvar,
     'remove_complex_operands': typecheck_Lvar,
 }
 interpLvar = interp_Lvar.InterpLvar().interp
-interp_dict = {
+interp_dict: InterpDict = {
     'remove_complex_operands': interpLvar,
     'select_instructions': interp_x86,
     'assign_homes': interp_x86,
@@ -29,13 +29,13 @@ interp_dict = {
 }
 
 if True:
-    run_tests('var', compiler, 'var',
+    run_tests('var', C, 'var',
               typecheck_dict,
               interp_dict)
 else:
     run_one_test(os.getcwd() + '/tests/var/zero.py',
                  'var',
-                 compiler,
+                 C,
                  'var',
                  typecheck_dict,
                  interp_dict)

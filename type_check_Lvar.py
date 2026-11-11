@@ -1,16 +1,19 @@
 from ast import *
-from utils import IntType
+from utils import IntType, Type
+
+# Maps each variable name to its type.
+TypeEnv = dict[str, Type]
 
 # This is the type checker for Lvar and LmonVar.
 
 class TypeCheckLvar:
           
-  def check_type_equal(self, t1, t2, e):
+  def check_type_equal(self, t1: Type, t2: Type, e: object) -> None:
     if t1 != t2:
       raise Exception('error: ' + repr(t1) + ' != ' + repr(t2) \
                       + ' in ' + repr(e))
 
-  def type_check_exp(self, e, env):
+  def type_check_exp(self, e: expr, env: TypeEnv) -> Type:
     match e:
       case BinOp(left, Add(), right):
         l = self.type_check_exp(left, env)
@@ -37,7 +40,7 @@ class TypeCheckLvar:
       case _:
         raise Exception('type_check_exp: unexpected ' + repr(e))
 
-  def type_check_stmts(self, ss, env):
+  def type_check_stmts(self, ss: list[stmt], env: TypeEnv) -> None:
     if len(ss) == 0:
       return
     match ss[0]:
@@ -58,7 +61,7 @@ class TypeCheckLvar:
       case _:
         raise Exception('type_check_stmts: unexpected ' + repr(ss))
 
-  def type_check(self, p):
+  def type_check(self, p: Module) -> None:
     match p:
       case Module(body):
         self.type_check_stmts(body, {})

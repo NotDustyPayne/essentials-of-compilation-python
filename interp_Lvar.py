@@ -1,16 +1,16 @@
 from ast import *
 from utils import input_int
-from interp_Lint import InterpLint
+from interp_Lint import InterpLint, InterpValue, Env
 
 class InterpLvar(InterpLint):
-  def interp_exp(self, e, env):
+  def interp_exp(self, e: expr, env: Env) -> InterpValue:
     match e:
       case Name(id):
         return env[id]
       case _:
         return super().interp_exp(e, env)
 
-  def interp_stmt(self, s, env, cont):
+  def interp_stmt(self, s: stmt, env: Env, cont: list[stmt]) -> InterpValue:
     match s:
       case Assign([Name(id)], value):
         env[id] = self.interp_exp(value, env)
@@ -18,14 +18,14 @@ class InterpLvar(InterpLint):
       case _:
         return super().interp_stmt(s, env, cont)
         
-  def interp(self, p):
+  def interp(self, p: Module) -> None:
     match p:
       case Module(body):
         self.interp_stmts(body, {})
       case _:
         raise Exception('interp: unexpected ' + repr(p))
 
-def interp_Lvar(ast):
+def interp_Lvar(ast: Module) -> None:
   interp = InterpLvar()
   interp.interp(ast)
       
