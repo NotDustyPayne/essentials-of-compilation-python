@@ -10,6 +10,7 @@ from utils import dedent, indent, indent_stmt, label_name
 @dataclass
 class X86Program:
     body: dict[str, list[instr]] | list[instr]
+    stack_space: int | None = None
 
     def __str__(self) -> str:
         result = ''

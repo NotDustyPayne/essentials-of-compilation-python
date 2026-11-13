@@ -112,33 +112,138 @@ class Compiler:
     # The expression e passed to select_arg should furthermore be an atom.
     # (But there is no type for atoms, so the type of e is given as expr.)
     def select_arg(self, e: expr) -> arg:
-        # YOUR CODE HERE
-        raise NotImplementedError
+        """
+        translate individual expressions to x86 counterparts
+        this will just be the atms, that map from atm-> arg
+        """
+        match e:
+            case Constant(int):
+                return Immediate(int)
+            case Name(var):
+                return Variable(var)
+            case _:
+                raise Exception("unexpected non-atomic in select_arg")
+
 
     def select_stmt(self, s: stmt) -> list[instr]:
-        # YOUR CODE HERE
-        raise NotImplementedError
+        """
+        take some statement and return it as a list of instructions
+        instr class is all the X86 defined things we have
+        """
+        match s:
+            case Expr(Call(Name('print'), [atm])):
+                return [
+                    Instr('movq', [self.select_arg(atm), Reg('rdi')]),
+                    Callq('print_int', 1)
+                ]
+            case Expr(exp):
+                # MOST of this is NOT observable!! we don't needa. lot of these cases!
+                # for example, " a + b ; print (a) " who cares about the result of a + b here
+                match exp:
+                    case Call(Name('input_int'), []):
+                        return [
+                            Callq('read_int', 0),
+                        ]
+                    case UnaryOp(USub(), atm):
+                        return [Instr('negq', [self.select_arg(atm)])]
+                    case BinOp(left_atm, Add(), right_atm):
+                        return [
+                            Instr('movq', [self.select_arg(left_atm), Reg('rax')]),
+                            Instr('addq', [self.select_arg(right_atm), Reg('rax')]),
+                        ]
+                    case BinOp(left_atm, Sub(), right_atm):
+                        return [
+                            Instr('movq', [self.select_arg(left_atm), Reg('rax')]),
+                            Instr('subq', [self.select_arg(right_atm), Reg('rax')]),
+                        ]
+                    case _:
+                        raise Exception("error in pattern match of Expr in select_stmt ")
+            case Assign([var], exp):
+                match exp:
+                    case Call(Name('input_int'), []):
+                        return [
+                            Callq('read_int', 0),
+                            Instr('movq', [Reg('rax'), self.select_arg(var)])
+                        ]
+                    case UnaryOp(USub(), atm):
+                        return [
+                            Instr('movq', [self.select_arg(atm), Reg('rax')]),
+                            Instr('negq', [Reg('rax')]),
+                            Instr('movq', [Reg('rax'), self.select_arg(var)])
+                            ]
+                    case BinOp(left_atm, Add(), right_atm):
+                        return [
+                            Instr('movq', [self.select_arg(left_atm), Reg('rax')]),
+                            Instr('addq', [self.select_arg(right_atm), Reg('rax')]),
+                            Instr('movq', [Reg('rax'), self.select_arg(var)])
+                        ]
+                    case BinOp(left_atm, Sub(), right_atm):
+                        return [
+                            Instr('movq', [self.select_arg(left_atm), Reg('rax')]),
+                            Instr('subq', [self.select_arg(right_atm), Reg('rax')]),
+                            Instr('movq', [Reg('rax'), self.select_arg(var)])
+                        ]
+                    # needs to handle atms as well
+                    case Name(inner_var):
+                        return [Instr('movq', [self.select_arg(Name(inner_var)), self.select_arg(var)])]
+                    case Constant(inner_int):
+                        return [Instr('movq', [self.select_arg(Constant(inner_int)), self.select_arg(var)])]
+
+                    case _:
+                        raise Exception("error in pattern match of Assign in select_stmt")
+            case _:
+                raise Exception("error in select_stmt, pattern unrecognized")
 
     def select_instructions(self, p: Module) -> X86Program:
-        # YOUR CODE HERE
-        raise NotImplementedError
+        """
+        we need to do some translation here, something about labels
+        """
+        instructions : list[instr] = []
+        for statement in p.body:
+            instructions.extend(self.select_stmt(statement))
+        x86_program = X86Program(body=instructions)
+        return x86_program
 
     ############################################################################
     # Assign Homes
     ############################################################################
 
     def assign_homes_arg(self, a: arg, home: dict[Variable, arg]) -> arg:
-        # YOUR CODE HERE
-        raise NotImplementedError
+        match a:
+            case Variable(var):
+                if Variable(var) in home:
+                    return home[a]
+                else:
+                    offset = -8 * (len(home.keys()) + 1)
+                    home[a] = Deref('rbp', offset)
+                    return home[a]
+            case _:
+                return a
+
 
     def assign_homes_instr(self, i: instr,
                            home: dict[Variable, arg]) -> instr:
-        # YOUR CODE HERE
-        raise NotImplementedError
+        match i:
+            case Instr(instr, args):
+                homed_args = [self.assign_homes_arg(a, home) for a in args]
+                return Instr(instr, homed_args)
+            case Callq(func, num_args):
+                return Callq(func, num_args)
+            case _:
+                raise Exception("unrecognized pattern in assign_homes_instr")
+
 
     def assign_homes(self, p: X86Program) -> X86Program:
-        # YOUR CODE HERE
-        raise NotImplementedError
+        program_instructions_with_assign_homes : list[instr] = []
+        homes_dict : dict[Variable, arg] = {}
+        assert isinstance(p.body, list)
+
+        for instruction in p.body:
+            program_instructions_with_assign_homes.append(self.assign_homes_instr(instruction, homes_dict))
+
+        stack_space = align((len(homes_dict.keys())) * 8 , 16)
+
+        return X86Program(body = program_instructions_with_assign_homes, stack_space=stack_space)
 
     ############################################################################
     # Patch Instructions
