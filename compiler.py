@@ -285,6 +285,25 @@ class Compiler:
     ############################################################################
 
     def prelude_and_conclusion(self, p: X86Program) -> X86Program:
-        # YOUR CODE HERE
-        raise NotImplementedError
+
+        main_instructions : list[instr] = []
+        assert isinstance(p.body, list)
+        assert p.stack_space is not None
+
+        main_instructions = p.body
+        prelude : list[instr] = [
+            Instr('pushq', [Reg('rbp')]),
+            Instr('movq', [Reg('rsp'), Reg('rbp')]),
+            Instr('subq', [Immediate(p.stack_space), Reg('rsp')])
+
+        ]
+        conclusion : list[instr] = [
+            Instr('addq', [Immediate(p.stack_space), Reg('rsp')]),
+            Instr('popq', [Reg('rbp')]),
+            Instr('retq', [])
+
+        ]
+
+        wrapped_instructions = prelude + main_instructions + conclusion
+        return X86Program(body=wrapped_instructions, stack_space=p.stack_space)
 
