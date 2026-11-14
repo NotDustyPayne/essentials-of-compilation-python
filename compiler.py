@@ -251,11 +251,34 @@ class Compiler:
 
     def patch_instr(self, i: instr) -> list[instr]:
         # YOUR CODE HERE
-        raise NotImplementedError
+        match i:
+            case Instr(name, [Immediate(n) as source, dest]):
+                # An Instruction can't take a super big int, we need to move it into a register (thats allowed for some reason)
+                # then we can use it in its original instruction with a register reference
+                if not (-(1 << 31) <= n < (1 << 31)):
+                    return [
+                        Instr('movq', [Immediate(n), Reg('r11')]),
+                        Instr(name, [Reg('r11'), dest])
+                    ]
+                else:
+                    return [i]
+            case Instr(name, [Deref() as source, Deref() as dest]):
+                return [
+                    Instr(name, [source, Reg('rax')]),
+                    Instr(name,[Reg('rax'), dest]),
+                ]
+            case _:
+                return [i]
+        
 
     def patch_instructions(self, p: X86Program) -> X86Program:
-        # YOUR CODE HERE
-        raise NotImplementedError
+        patched_instructions : list[instr] = []
+        assert isinstance(p.body, list)
+
+        for instruction in p.body:
+            patched_instructions.extend(self.patch_instr(instruction))
+
+        return X86Program(body = patched_instructions, stack_space=p.stack_space)
 
     ############################################################################
     # Prelude & Conclusion
