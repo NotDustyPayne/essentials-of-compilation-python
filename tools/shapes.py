@@ -261,3 +261,125 @@ CHECKERS: dict[str, Callable[[object], list[str]]] = {
     'patch_instructions': check_x86_int,
     'prelude_and_conclusion': check_x86_final,
 }
+
+
+# ---------------------------------------------------------------------------
+# Chapter 4: register allocation (sections 4.5 and 4.6)
+# ---------------------------------------------------------------------------
+
+CALLEE_SAVED_REGS = ['rbx', 'r12', 'r13', 'r14', 'r15']  # plus rsp and rbp
+
+
+def check_x86_int_ch4(p: object) -> list[str]:
+    """Output of patch_instructions in chapter 4: valid x86_Int, and the
+    trivial moves (same source and destination) are deleted (section 4.5)."""
+    problems = check_x86_int(p)
+    for i in _main_body(p, []):
+        match i:
+            case Instr('movq', [a, b]) if a == b:
+                problems.append(f'trivial move left in (delete it, section 4.5): `{str(i).strip()}`')
+    return problems
+
+
+def _is(i: instr, name: str, *args: arg) -> bool:
+    return isinstance(i, Instr) and i.instr == name and tuple(i.args) == args
+
+
+def _reg_operand(i: instr, name: str) -> str | None:
+    """`pushq %rbx` -> 'rbx' (for name='pushq'); None if i isn't that."""
+    match i:
+        case Instr(n, [Reg(reg)]) if n == name:
+            return reg
+    return None
+
+
+def check_x86_final_ch4(p: object) -> list[str]:
+    """Output of prelude_and_conclusion in chapter 4 (section 4.6, figure 4.9):
+
+        pushq %rbp; movq %rsp, %rbp; pushq <callee-saved>...; subq $A, %rsp
+        ... body ...
+        addq $A, %rsp; popq <callee-saved, reversed>...; popq %rbp; retq
+
+    with %rsp 16-byte aligned in the body, every callee-saved register the
+    body uses saved and restored, and every stack slot inside the frame,
+    below the saved registers."""
+    problems = check_x86_int(p)
+    body = _main_body(p, [])
+    if not body:
+        return problems or ['program has no instructions']
+
+    # Prelude
+    if not (_is(body[0], 'pushq', Reg('rbp')) and len(body) > 1
+            and _is(body[1], 'movq', Reg('rsp'), Reg('rbp'))):
+        return problems + ['main should start with `pushq %rbp` then `movq %rsp, %rbp`']
+    k = 2
+    pushed: list[str] = []
+    while k < len(body) and (reg := _reg_operand(body[k], 'pushq')) is not None:
+        pushed.append(reg)
+        k += 1
+    sub = 0
+    match body[k] if k < len(body) else None:
+        case Instr('subq', [Immediate(n), Reg('rsp')]):
+            sub = n
+            k += 1
+
+    # Conclusion
+    j = len(body)
+    if not _is(body[j - 1], 'retq'):
+        return problems + [f'main should end with retq, ends with `{str(body[-1]).strip()}`']
+    j -= 1
+    if not (j > k and _is(body[j - 1], 'popq', Reg('rbp'))):
+        return problems + ['the conclusion should end with `popq %rbp` then `retq`']
+    j -= 1
+    popped: list[str] = []
+    while j > k and (reg := _reg_operand(body[j - 1], 'popq')) is not None:
+        popped.insert(0, reg)
+        j -= 1
+    add = 0
+    match body[j - 1] if j > k else None:
+        case Instr('addq', [Immediate(n), Reg('rsp')]):
+            add = n
+            j -= 1
+    middle = body[k:j]
+
+    for reg in pushed:
+        if reg not in CALLEE_SAVED_REGS:
+            problems.append(f'the prelude pushes %{reg}, which is not callee-saved')
+    if popped != pushed[::-1]:
+        want = ', '.join('%' + x for x in pushed[::-1])
+        got = ', '.join('%' + x for x in popped)
+        problems.append(f'the conclusion should pop the saved registers in the reverse of the '
+                        f'order they were pushed: expected popq {want or "(none)"}; got popq {got or "(none)"}')
+    if sub != add:
+        problems.append(f'the prelude subtracts {sub} from %rsp but the conclusion adds back {add}')
+    c = len(pushed)
+    if (8 * c + sub) % 16 != 0:
+        problems.append(f'%rsp is not 16-byte aligned for calls: the prelude pushes {c} register(s) '
+                        f'({8 * c} bytes) and subtracts {sub}; those must add up to a multiple of 16 '
+                        f'(the book: A = align(8S + 8C) - 8C)')
+
+    used = set()
+    for i in middle:
+        if isinstance(i, Instr):
+            for a in i.args:
+                if isinstance(a, Reg) and a.id in CALLEE_SAVED_REGS:
+                    used.add(a.id)
+                if isinstance(a, Deref) and a.reg == 'rbp':
+                    if -a.offset <= 8 * c:
+                        problems.append(f'{a} overlaps the saved callee-saved registers '
+                                        f'(-8(%rbp)..{-8 * c}(%rbp)): `{str(i).strip()}`')
+                    elif -a.offset > 8 * c + sub:
+                        problems.append(f'{a} is outside the frame (the prelude reserves {sub} bytes '
+                                        f'below the {c} saved register(s)): `{str(i).strip()}`')
+    for reg in sorted(used - set(pushed)):
+        problems.append(f'the program uses callee-saved %{reg} but the prelude does not save it')
+    return problems
+
+
+CHECKERS_CH4: dict[str, Callable[[object], list[str]]] = {
+    'remove_complex_operands': check_Lvar_mon,
+    'select_instructions': check_x86_var,
+    'assign_homes': check_x86_homes,
+    'patch_instructions': check_x86_int_ch4,
+    'prelude_and_conclusion': check_x86_final_ch4,
+}

@@ -4,6 +4,10 @@ from utils import *
 # x86_ast's `arg` (an x86 operand) and `Global` deliberately replace ast.arg and
 # ast.Global from `from ast import *`. For function parameters, write ast.arg.
 from x86_ast import *  # type: ignore[assignment]
+# mypy keeps the *first* `arg` it sees (ast.arg, from `from ast import *`),
+# even though x86_ast's replaces it at runtime. So type hints use this
+# explicit name for the x86 operand class instead of plain `arg`.
+from x86_ast import arg as X86Arg
 import os
 
 # Use the built-in list/tuple/dict/set for type hints. Importing
@@ -111,7 +115,7 @@ class Compiler:
 
     # The expression e passed to select_arg should furthermore be an atom.
     # (But there is no type for atoms, so the type of e is given as expr.)
-    def select_arg(self, e: expr) -> arg:
+    def select_arg(self, e: expr) -> X86Arg:
         """
         translate individual expressions to x86 counterparts
         this will just be the atms, that map from atm-> arg
@@ -208,7 +212,7 @@ class Compiler:
     # Assign Homes
     ############################################################################
 
-    def assign_homes_arg(self, a: arg, home: dict[Variable, arg]) -> arg:
+    def assign_homes_arg(self, a: X86Arg, home: dict[Variable, X86Arg]) -> X86Arg:
         match a:
             case Variable(var):
                 if Variable(var) in home:
@@ -222,7 +226,7 @@ class Compiler:
 
 
     def assign_homes_instr(self, i: instr,
-                           home: dict[Variable, arg]) -> instr:
+                           home: dict[Variable, X86Arg]) -> instr:
         match i:
             case Instr(instr, args):
                 homed_args = [self.assign_homes_arg(a, home) for a in args]
@@ -235,7 +239,7 @@ class Compiler:
 
     def assign_homes(self, p: X86Program) -> X86Program:
         program_instructions_with_assign_homes : list[instr] = []
-        homes_dict : dict[Variable, arg] = {}
+        homes_dict : dict[Variable, X86Arg] = {}
         assert isinstance(p.body, list)
 
         for instruction in p.body:

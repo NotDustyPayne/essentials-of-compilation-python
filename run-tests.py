@@ -13,6 +13,9 @@ from interp_x86.eval_x86 import interp_x86
 enable_tracing()
 
 C = compiler.Compiler()
+# Chapter 4: to test the register allocator instead, use the line below
+# (tools/progress.py --chapter 4 gives a more detailed report).
+# import compiler_register_allocator; C = compiler_register_allocator.Compiler()
 
 typecheck_Lvar = type_check_Lvar.TypeCheckLvar().type_check
 

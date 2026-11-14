@@ -75,6 +75,14 @@ python3.12 -m venv .venv && .venv/bin/pip install mypy   # one-time setup
   that the output has the right *shape* (`tools/shapes.py`, from the book's
   grammars) and the right *output* (interpreters, and finally real x86 via gcc).
   `-v` shows every failure; `-k text` filters tests by name.
+- `tools/progress.py --chapter 4` is the chapter 4 (register allocation)
+  scoreboard, for `compiler_register_allocator.py`. It also checks
+  uncover_live, build_interference, color_graph and allocate_registers on
+  the book's worked examples (figures 4.1-4.6), checks each allocation
+  (`tools/regalloc_checks.py`: no reserved registers, interfering variables
+  apart, call-live variables out of caller-saved registers, spills below the
+  saved registers), and overwrites the caller-saved registers after every
+  `callq` when interpreting, the way a real call may.
 - `tools/make_golden.py` writes the expected output (`.golden`) for new test
   programs by running the definitional interpreter.
 - `tools/snapshot.py` prints a deterministic report: every module imports,

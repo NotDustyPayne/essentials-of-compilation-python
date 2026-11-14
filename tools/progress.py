@@ -1,4 +1,4 @@
-"""Chapter 2 progress scoreboard.
+"""Progress scoreboard for chapters 2 and 4.
 
 Runs every test program in tests/var through the compiler's passes, in order,
 and checks two things after each pass:
@@ -12,14 +12,24 @@ Each test stops at its first failing pass, so every failure shown is the
 earliest one for that test. Unimplemented passes (NotImplementedError) show
 as "not started".
 
-    .venv/bin/python tools/progress.py            # scoreboard + first failures
-    .venv/bin/python tools/progress.py -v         # every failure
-    .venv/bin/python tools/progress.py -k input   # only tests with "input" in the name
+Chapter 4 (register allocation, compiler_register_allocator.py) adds:
+  - the book's worked examples for uncover_live, build_interference,
+    color_graph and allocate_registers, checked against the book's answers
+  - allocation checks after assign_homes (tools/regalloc_checks.py)
+  - stricter shape checks for patch_instructions and prelude_and_conclusion
+  - "register poisoning": after every callq, the interpreter overwrites the
+    caller-saved registers with junk, as a real call may
+
+    .venv/bin/python tools/progress.py              # chapter 2 scoreboard
+    .venv/bin/python tools/progress.py --chapter 4  # chapter 4 scoreboard
+    .venv/bin/python tools/progress.py -v           # every failure
+    .venv/bin/python tools/progress.py -k input     # only tests with "input" in the name
 """
 from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import io
 import os
 import subprocess
@@ -27,17 +37,18 @@ import sys
 import traceback
 from ast import Module, parse
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, Sequence
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
-import compiler  # noqa: E402
 from interp_Lvar import InterpLvar  # noqa: E402
 from interp_x86.eval_x86 import interp_x86  # noqa: E402
 from type_check_Lvar import TypeCheckLvar  # noqa: E402
-from tools.shapes import CHECKERS, check_Lvar  # noqa: E402
+from tools import regalloc_checks  # noqa: E402
+from tools.regalloc_checks import ExampleResult  # noqa: E402
+from tools.shapes import CHECKERS, CHECKERS_CH4, check_Lvar  # noqa: E402
 
 TEST_DIR = os.path.join(ROOT, 'tests', 'var')
 BUILD_DIR = os.path.join(ROOT, 'build')
@@ -51,12 +62,32 @@ PASSES: list[str] = [
     'patch_instructions',
     'prelude_and_conclusion',
 ]
-SECTION = {
-    'remove_complex_operands': '2.4',
-    'select_instructions': '2.5',
-    'assign_homes': '2.6',
-    'patch_instructions': '2.7',
-    'prelude_and_conclusion': '2.8',
+
+
+@dataclass
+class Chapter:
+    number: int
+    module: str                                         # where the Compiler class lives
+    section: dict[str, str]                             # pass -> book section
+    checkers: dict[str, Callable[[object], list[str]]]  # pass -> shape checker
+    regalloc: bool                                      # chapter 4 extras
+
+
+CHAPTERS = {
+    2: Chapter(2, 'compiler', {
+        'remove_complex_operands': '2.4',
+        'select_instructions': '2.5',
+        'assign_homes': '2.6',
+        'patch_instructions': '2.7',
+        'prelude_and_conclusion': '2.8',
+    }, CHECKERS, regalloc=False),
+    4: Chapter(4, 'compiler_register_allocator', {
+        'remove_complex_operands': '2.4',
+        'select_instructions': '2.5',
+        'assign_homes': '4.4',
+        'patch_instructions': '4.5',
+        'prelude_and_conclusion': '4.6',
+    }, CHECKERS_CH4, regalloc=True),
 }
 
 
@@ -130,7 +161,7 @@ def same_output(actual: str, golden: str) -> bool:
     return actual.strip() == golden.strip()
 
 
-def run_test(path: str) -> TestResult:
+def run_test(path: str, ch: Chapter, make_compiler: Callable[[], Any]) -> TestResult:
     name = os.path.splitext(os.path.basename(path))[0]
     root = os.path.splitext(path)[0]
     passes = {p: PassResult('blocked') for p in PASSES}
@@ -153,8 +184,9 @@ def run_test(path: str) -> TestResult:
         return TestResult(name, f'type error: {ex}', passes)
     golden = read_text(root + '.golden')
 
-    c = compiler.Compiler()
+    c = make_compiler()
     for p in PASSES:
+        before = program
         try:
             program = getattr(c, p)(program)
         except NotImplementedError:
@@ -164,7 +196,9 @@ def run_test(path: str) -> TestResult:
             passes[p] = PassResult('crash', traceback.format_exc(limit=-3).strip())
             break
 
-        problems = CHECKERS[p](program)
+        problems = ch.checkers[p](program)
+        if not problems and ch.regalloc and p == 'assign_homes':
+            problems = regalloc_checks.check_allocation(c, before, program)
         if problems:
             passes[p] = PassResult('shape', '\n'.join(problems[:5]))
             break
@@ -174,6 +208,8 @@ def run_test(path: str) -> TestResult:
                 actual = run_executable(program, name, root + '.in')
             elif p == 'remove_complex_operands':
                 actual = run_interp(InterpLvar().interp, program, root + '.in')
+            elif ch.regalloc:
+                actual = run_interp(interp_x86, regalloc_checks.poison_calls(program), root + '.in')
             else:
                 actual = run_interp(interp_x86, program, root + '.in')
         except Exception as ex:
@@ -191,10 +227,49 @@ LABEL: dict[Status, str] = {
 }
 
 
-def report(results: list[TestResult], verbose: bool) -> int:
+def status_word(statuses: Sequence[str], ok: int, failing: int) -> str:
+    if statuses and all(s == 'todo' for s in statuses):
+        return 'not started'
+    if statuses and all(s == 'blocked' for s in statuses):
+        return 'waiting on earlier passes'
+    if ok == len(statuses):
+        return 'done ✓'
+    if failing:
+        return f'{failing} failing ✗'
+    return 'in progress'
+
+
+def report_examples(examples: dict[str, list[ExampleResult]], verbose: bool) -> int:
+    """The chapter 4 book-example table. Returns the number of failures."""
+    print('\nBook examples (worked examples from sections 4.2-4.4)\n')
+    print(f'  {"step":<26}{"book":<7}{"passing":<10}status')
+    print(f'  {"-" * 26}{"-" * 7}{"-" * 10}{"-" * 20}')
+    failures = 0
+    for step, results in examples.items():
+        statuses = [r.status for r in results]
+        ok = statuses.count('ok')
+        failing = sum(s in ('wrong', 'crash') for s in statuses)
+        failures += failing
+        print(f'  {step:<26}§{regalloc_checks.EXAMPLE_SECTION[step]:<6}'
+              f'{f"{ok}/{len(results)}":<10}{status_word(statuses, ok, failing)}')
+    for step, results in examples.items():
+        broken = [r for r in results if r.status in ('wrong', 'crash')]
+        if not broken:
+            continue
+        print(f'\n{step}: {len(broken)} failing')
+        for r in broken if verbose else broken[:2]:
+            print(f'  ✗ {r.example} ({"crashed" if r.status == "crash" else "wrong answer"})')
+            for line in r.detail.splitlines():
+                print('      ' + line)
+        if not verbose and len(broken) > 2:
+            print(f'  ... and {len(broken) - 2} more (use -v to see all)')
+    return failures
+
+
+def report(results: list[TestResult], ch: Chapter, verbose: bool) -> int:
     good = [r for r in results if not r.error]
     bad = [r for r in results if r.error]
-    print(f'\nChapter 2 progress: {len(good)} tests in tests/var\n')
+    print(f'\nChapter {ch.number} progress: {len(good)} tests in tests/var\n')
     print(f'  {"pass":<26}{"book":<7}{"passing":<10}status')
     print(f'  {"-" * 26}{"-" * 7}{"-" * 10}{"-" * 20}')
     failures = 0
@@ -203,21 +278,12 @@ def report(results: list[TestResult], verbose: bool) -> int:
         ok = statuses.count('ok')
         failing = sum(s in ('shape', 'output', 'crash') for s in statuses)
         failures += failing
-        if statuses and all(s == 'todo' for s in statuses):
-            status = 'not started'
-        elif statuses and all(s == 'blocked' for s in statuses):
-            status = 'waiting on earlier passes'
-        elif ok == len(good):
-            status = 'done ✓'
-        elif failing:
-            status = f'{failing} failing ✗'
-        else:
-            status = 'in progress'
-        print(f'  {p:<26}§{SECTION[p]:<6}{f"{ok}/{len(good)}":<10}{status}')
+        status = status_word(statuses, ok, failing)
+        print(f'  {p:<26}§{ch.section[p]:<6}{f"{ok}/{len(good)}":<10}{status}')
 
     all_done = good and all(r.passes['prelude_and_conclusion'].status == 'ok' for r in good)
     if all_done:
-        print('\n  All tests compile to x86 and print the right output. Chapter 2 done!')
+        print(f'\n  All tests compile to x86 and print the right output. Chapter {ch.number} done!')
 
     if bad:
         print('\nProblems with the tests themselves:')
@@ -247,11 +313,22 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument('-v', '--verbose', action='store_true', help='show every failure')
     ap.add_argument('-k', metavar='TEXT', default='', help='only tests whose name contains TEXT')
+    ap.add_argument('-c', '--chapter', type=int, choices=sorted(CHAPTERS), default=2,
+                    help='which chapter\'s compiler to check (default 2)')
+    ap.add_argument('--module', help='module with the Compiler class '
+                    '(default: compiler for chapter 2, compiler_register_allocator for 4)')
     args = ap.parse_args()
     sys.setrecursionlimit(10000)
+    ch = CHAPTERS[args.chapter]
+    module = importlib.import_module(args.module or ch.module)
+    make_compiler: Callable[[], Any] = module.Compiler
     tests = sorted(os.path.join(TEST_DIR, f) for f in os.listdir(TEST_DIR)
                    if f.endswith('.py') and args.k in f)
-    return report([run_test(t) for t in tests], args.verbose)
+    example_failures = 0
+    if ch.regalloc:
+        example_failures = report_examples(regalloc_checks.run_examples(make_compiler()), args.verbose)
+    status = report([run_test(t, ch, make_compiler) for t in tests], ch, args.verbose)
+    return 1 if status or example_failures else 0
 
 
 if __name__ == '__main__':
