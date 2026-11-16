@@ -17,6 +17,8 @@ from x86_ast import *  # X86Program, Instr, Reg, Variable, location, ...
 # entries.
 LiveAfter = dict[instr, set[location]]
 
+ARG_REGS = ['rdi', 'rsi', 'rdx', 'rcx', 'r8', 'r9']
+CALLER_SAVED_REGS = ['rax', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
 
 class Compiler(compiler.Compiler):
 
@@ -26,7 +28,50 @@ class Compiler(compiler.Compiler):
 
     def uncover_live(self, p: X86Program) -> LiveAfter:
         """Map each instruction to its live-after set (exercise 4.2)."""
-        raise NotImplementedError
+
+        assert isinstance(p.body, list)
+        live_after : LiveAfter = dict()
+        live_before_set : set[location] = set() # represents the previous L_before(K+1) , carries over in the iterations
+
+        last_item_flag : bool = True
+
+        for instruction in reversed(p.body):
+            if last_item_flag:
+                live_after[instruction] = set()
+                last_item_flag = False
+            else:
+                live_after[instruction] = live_before_set
+
+            live_before_set = (live_after[instruction].difference(self.write_locations(instruction))).union(self.read_locations(instruction))
+
+        return live_after
+
+    def write_locations(self, instruction: instr) -> set[location]:
+        match instruction:
+            case Callq(func, _):
+                return {Reg(r) for r in CALLER_SAVED_REGS}
+            case Instr('addq' | 'subq' | 'movq', [_, dest]):
+                return {dest} if isinstance(dest, location) else set()
+            case Instr('negq', [dest]):
+                return {dest} if isinstance(dest, location) else set()
+            case _:
+                raise Exception("unrecognized write pattern")
+
+    def read_locations(self, instruction: instr) -> set[location]:
+        match instruction:
+            case Callq(_, num_args):
+                return {Reg(r) for r in ARG_REGS[:num_args]}
+            case Instr('movq', [src, _]):
+                return {src} if isinstance(src, location) else set()
+
+            case Instr('addq' | 'subq' | 'negq', args):
+                return {a for a in args if isinstance(a, location)}
+            case _:
+                raise Exception("unrecognized read location pattern")
+
+
+
+
 
     ############################################################################
     # Build the Interference Graph (section 4.3)
