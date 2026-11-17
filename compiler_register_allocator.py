@@ -30,7 +30,7 @@ class Compiler(compiler.Compiler):
         """Map each instruction to its live-after set (exercise 4.2)."""
 
         assert isinstance(p.body, list)
-        live_after : LiveAfter = dict()
+        live_after : LiveAfter = {}
         live_before_set : set[location] = set() # represents the previous L_before(K+1) , carries over in the iterations
 
         last_item_flag : bool = True
@@ -48,7 +48,7 @@ class Compiler(compiler.Compiler):
 
     def write_locations(self, instruction: instr) -> set[location]:
         match instruction:
-            case Callq(func, _):
+            case Callq(_, _):
                 return {Reg(r) for r in CALLER_SAVED_REGS}
             case Instr('addq' | 'subq' | 'movq', [_, dest]):
                 return {dest} if isinstance(dest, location) else set()
@@ -80,7 +80,32 @@ class Compiler(compiler.Compiler):
     def build_interference(self, p: X86Program,
                            live_after: LiveAfter) -> UndirectedAdjList[location]:
         """Exercise 4.3."""
-        raise NotImplementedError
+        assert isinstance(p.body, list)
+        interference_graph = UndirectedAdjList[location]()
+
+        # add vertices, any location in the Instructions
+        for instruction in p.body:
+            locations = self.write_locations(instruction).union(self.read_locations(instruction))
+            for loc in locations:
+                interference_graph.add_vertex(loc)
+
+        # add edges
+        for instruction in p.body:
+            live_set = live_after[instruction]
+            write_locs = self.write_locations(instruction)
+
+            match instruction:
+                case Instr('movq', [src, location() as dest]):
+                    for loc in live_set:
+                        if loc != src and loc != dest:
+                            interference_graph.add_edge(dest, loc)
+                case _:
+                    for d in write_locs:
+                        for v in live_set:
+                            if v != d:
+                                interference_graph.add_edge(d,v)
+
+        return interference_graph
 
     ############################################################################
     # Allocate Registers (section 4.4)
