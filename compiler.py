@@ -33,19 +33,19 @@ class Compiler:
         match e:
             case Constant(n):
                 return (Constant(n), [])
-            
+
             case Name(var):
                 return (Name(var), [])
-            
+
             case Call(Name('input_int'),[]):
                 if need_atomic:
                     new_binding_name = Name(generate_name("tmp"))
                     new_temp = new_binding_name, Call(Name('input_int'),[])
                     return new_binding_name, [new_temp]
-                
+
                 else:
                     return Call(Name('input_int'),[]) , []
-            
+
             case UnaryOp(USub(), exp):
                 atm, temps = self.rco_exp(exp, True)
                 if need_atomic:
@@ -107,7 +107,7 @@ class Compiler:
         for statment in p.body:
             updated_statements.extend(self.rco_stmt(statment))
 
-        return Module(body=updated_statements, type_ignores=p.type_ignores)            
+        return Module(body=updated_statements, type_ignores=p.type_ignores)
 
     ############################################################################
     # Select Instructions
@@ -268,12 +268,12 @@ class Compiler:
                     return [i]
             case Instr(name, [Deref() as source, Deref() as dest]):
                 return [
-                    Instr(name, [source, Reg('rax')]),
+                    Instr('movq', [source, Reg('rax')]),
                     Instr(name,[Reg('rax'), dest]),
                 ]
             case _:
                 return [i]
-        
+
 
     def patch_instructions(self, p: X86Program) -> X86Program:
         patched_instructions : list[instr] = []
@@ -282,7 +282,7 @@ class Compiler:
         for instruction in p.body:
             patched_instructions.extend(self.patch_instr(instruction))
 
-        return X86Program(body = patched_instructions, stack_space=p.stack_space)
+        return X86Program(body = patched_instructions, stack_space=p.stack_space, used_callee=p.used_callee)
 
     ############################################################################
     # Prelude & Conclusion
@@ -310,4 +310,3 @@ class Compiler:
 
         wrapped_instructions = prelude + main_instructions + conclusion
         return X86Program(body=wrapped_instructions, stack_space=p.stack_space)
-

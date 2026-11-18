@@ -225,12 +225,14 @@ class Compiler(compiler.Compiler):
         g = self.build_interference(p, live_after_set)
         return self.allocate_registers(p, g)
 
-    ############################################################################
-    # Patch Instructions (section 4.5)
-    ############################################################################
 
-    def patch_instructions(self, p: X86Program) -> X86Program:
-        raise NotImplementedError
+    def patch_instr(self, i: instr) -> list[instr]:
+        match i:
+            case Instr('movq', [src,dest]) if src == dest:
+                return []
+            case _:
+                return super().patch_instr(i)
+
 
     ############################################################################
     # Prelude & Conclusion (section 4.6)
