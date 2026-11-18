@@ -221,7 +221,9 @@ class Compiler(compiler.Compiler):
     ############################################################################
 
     def assign_homes(self, p: X86Program) -> X86Program:
-        raise NotImplementedError
+        live_after_set = self.uncover_live(p)
+        g = self.build_interference(p, live_after_set)
+        return self.allocate_registers(p, g)
 
     ############################################################################
     # Patch Instructions (section 4.5)
