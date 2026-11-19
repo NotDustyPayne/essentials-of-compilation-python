@@ -40,9 +40,12 @@ class TypeCheckLvar:
       case _:
         raise Exception('type_check_exp: unexpected ' + repr(e))
 
-  def type_check_stmts(self, ss: list[stmt], env: TypeEnv) -> None:
+  # Returns None here. Subclasses return a Type when the statements end in a
+  # `return` (TypeCheckLif passes along its branches' result; chapter 8 adds
+  # return statements), so the annotation allows both.
+  def type_check_stmts(self, ss: list[stmt], env: TypeEnv) -> Type | None:
     if len(ss) == 0:
-      return
+      return None
     match ss[0]:
       case Assign([Name(id)], value):
         t = self.type_check_exp(value, env)

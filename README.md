@@ -83,8 +83,20 @@ python3.12 -m venv .venv && .venv/bin/pip install mypy   # one-time setup
   apart, call-live variables out of caller-saved registers, spills below the
   saved registers), and overwrites the caller-saved registers after every
   `callq` when interpreting, the way a real call may.
+- `tools/progress.py --chapter 5` is the chapter 5 (Booleans and
+  conditionals) scoreboard, for `compiler_conditionals.py`. It runs the
+  tests in `tests/if` through shrink, remove_complex_operands,
+  explicate_control, select_instructions, assign_homes, patch_instructions
+  and prelude_and_conclusion (figure 5.15), checking each output's shape
+  (L_If, L_If^mon, C_If, x86_If), type checking the L_If and C_If outputs
+  with the book's type checkers, and flagging code that explicate_control
+  duplicated. It also checks uncover_live and build_interference on
+  multi-block examples (figures 5.12 and 5.14), and that the type checker
+  rejects every program in `tests/if_type_errors` (exercise 5.1).
 - `tools/make_golden.py` writes the expected output (`.golden`) for new test
-  programs by running the definitional interpreter.
+  programs (`tests/var` and `tests/if`) by running the definitional
+  interpreter.
 - `tools/snapshot.py` prints a deterministic report: every module imports,
-  the Lvar interpreter and type checker on `tests/`, AST printing, and the x86
-  interpreter. Diff its output before and after a refactor.
+  each test directory's interpreter and type checker on `tests/` (Lvar, Lif),
+  AST printing, the Cif interpreter and type checker on figure 5.12, and the
+  x86 interpreter. Diff its output before and after a refactor.

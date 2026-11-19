@@ -8,6 +8,9 @@ produced the language the book says it should (figure 2.10):
     L_Var --rco--> L_Var^mon --select--> x86_Var --assign homes--> x86_Var
           (no variables) --patch--> x86_Int --prelude--> x86_Int (main)
 
+Chapter 4 tightens the last two checks, and chapter 5 (figure 5.15) has its
+own set, at the end of this file.
+
 Each checker returns a list of human-readable problems. An empty list means
 the program has the right shape.
 """
@@ -18,8 +21,11 @@ from ast import (Add, Assign, BinOp, Call, Constant, Expr, Module, Name,
                  Sub, UnaryOp, USub, expr, stmt)
 from typing import Callable
 
-from x86_ast import (Callq, Deref, Immediate, Instr, Jump, Reg, Variable,
-                     X86Program, arg, instr)
+from ast import Return
+
+from utils import Begin, CProgram, Goto
+from x86_ast import (ByteReg, Callq, Deref, Immediate, Instr, Jump, JumpIf, Reg,
+                     Variable, X86Program, arg, instr)
 
 REGISTERS = {'rsp', 'rbp', 'rax', 'rbx', 'rcx', 'rdx', 'rsi', 'rdi',
              'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15'}
@@ -307,7 +313,13 @@ def check_x86_final_ch4(p: object) -> list[str]:
     body = _main_body(p, [])
     if not body:
         return problems or ['program has no instructions']
+    return problems + _check_frame(body)
 
+
+def _check_frame(body: list[instr]) -> list[str]:
+    """The prelude/conclusion checks of check_x86_final_ch4, on a list of
+    instructions that starts with the prelude and ends with the conclusion."""
+    problems: list[str] = []
     # Prelude
     if not (_is(body[0], 'pushq', Reg('rbp')) and len(body) > 1
             and _is(body[1], 'movq', Reg('rsp'), Reg('rbp'))):
@@ -382,4 +394,455 @@ CHECKERS_CH4: dict[str, Callable[[object], list[str]]] = {
     'assign_homes': check_x86_homes,
     'patch_instructions': check_x86_int_ch4,
     'prelude_and_conclusion': check_x86_final_ch4,
+}
+
+
+# ---------------------------------------------------------------------------
+# Chapter 5: Booleans and conditionals
+#
+#   L_If --shrink--> L_If (no and/or) --rco--> L_If^mon --explicate--> C_If
+#        --select--> x86_If^Var --assign homes--> x86_If --patch--> x86_If
+#        --prelude--> x86_If with main and conclusion blocks     (figure 5.15)
+# ---------------------------------------------------------------------------
+
+CMP_OPS = (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)
+CONDITION_CODES = {'e', 'ne', 'l', 'le', 'g', 'ge'}
+BYTE_REGISTERS = {'ah', 'al', 'bh', 'bl', 'ch', 'cl', 'dh', 'dl'}
+
+# Instruction name -> number of arguments (x86_If, figure 5.10).
+INSTR_ARITY_IF = {**INSTR_ARITY, 'xorq': 2, 'cmpq': 2, 'movzbq': 2,
+                  **{'set' + cc: 1 for cc in CONDITION_CODES}}
+
+
+def _is_bool_const(e: expr) -> bool:
+    return isinstance(e, Constant) and isinstance(e.value, bool)
+
+
+def _is_int_const(e: expr) -> bool:
+    return isinstance(e, Constant) and isinstance(e.value, int) and not isinstance(e.value, bool)
+
+
+def _is_cmp(e: expr) -> bool:
+    """Compare(e, [cmp], [e]) with exactly one comparison (no `a < b < c`)."""
+    return (isinstance(e, ast.Compare) and len(e.ops) == 1 and len(e.comparators) == 1
+            and isinstance(e.ops[0], CMP_OPS))
+
+
+def _lif_exp(e: expr, allow_boolop: bool, problems: list[str]) -> None:
+    """exp in figure 5.2 (allow_boolop=False: after shrink, no and/or)."""
+    match e:
+        case _ if _is_int_const(e) or _is_bool_const(e) or _is_input_int(e):
+            pass
+        case Name(_):
+            pass
+        case UnaryOp(USub() | ast.Not(), v):
+            _lif_exp(v, allow_boolop, problems)
+        case BinOp(left, Add() | Sub(), right):
+            _lif_exp(left, allow_boolop, problems)
+            _lif_exp(right, allow_boolop, problems)
+        case ast.BoolOp(ast.And() | ast.Or(), values) if len(values) == 2:
+            if not allow_boolop:
+                problems.append(f'`and`/`or` left in the program (shrink should turn them into '
+                                f'if expressions, section 5.5): `{_src(e)}`')
+            for x in values:
+                _lif_exp(x, allow_boolop, problems)
+        case ast.Compare(left, _, [right]) if _is_cmp(e):
+            _lif_exp(left, allow_boolop, problems)
+            _lif_exp(right, allow_boolop, problems)
+        case ast.IfExp(test, body, orelse):
+            for x in (test, body, orelse):
+                _lif_exp(x, allow_boolop, problems)
+        case _:
+            problems.append(f'not an L_If expression: {_src(e)}')
+
+
+def _lif_stmts(ss: list[stmt], allow_boolop: bool, problems: list[str]) -> None:
+    for s in ss:
+        match s:
+            case Expr(Call(Name('print'), [e])):
+                _lif_exp(e, allow_boolop, problems)
+            case Expr(e):
+                _lif_exp(e, allow_boolop, problems)
+            case Assign([Name(_)], e):
+                _lif_exp(e, allow_boolop, problems)
+            case ast.If(test, body, orelse):
+                _lif_exp(test, allow_boolop, problems)
+                if not body or not orelse:
+                    problems.append(f'an L_If `if` needs both branches (stmt+): `{_src(s)}`')
+                _lif_stmts(body, allow_boolop, problems)
+                _lif_stmts(orelse, allow_boolop, problems)
+            case _:
+                problems.append(f'not an L_If statement: {_src(s)}')
+
+
+def check_Lif(p: Module) -> list[str]:
+    """Figure 5.2. Used to validate the chapter 5 test programs."""
+    problems: list[str] = []
+    _lif_stmts(p.body, True, problems)
+    return problems
+
+
+def check_Lif_shrunk(p: object) -> list[str]:
+    """Output of shrink (section 5.5): L_If without `and` and `or`."""
+    if not isinstance(p, Module):
+        return [f'expected a Module, got {type(p).__name__}']
+    problems: list[str] = []
+    _lif_stmts(p.body, False, problems)
+    return problems
+
+
+def _is_atomic_if(e: expr) -> bool:
+    """atm ::= Constant(int) | Name(var) | Constant(bool)"""
+    return isinstance(e, Name) or isinstance(e, Constant) and isinstance(e.value, int)
+
+
+def _is_generated(e: expr) -> bool:
+    # utils.generate_name makes names like tmp.3; source variables can't contain a dot.
+    return isinstance(e, Name) and '.' in e.id
+
+
+def _mon_if_exp(e: expr, problems: list[str]) -> None:
+    """exp in figure 5.11. The text of section 5.6 adds that the operands of
+    `not` and of comparisons must be atomic."""
+    where = _src(e)
+    match e:
+        case _ if _is_atomic_if(e) or _is_input_int(e):
+            pass
+        case UnaryOp(USub() | ast.Not() as op, v):
+            if not _is_atomic_if(v):
+                name = '-' if isinstance(op, USub) else 'not'
+                problems.append(f'operand of {name} is not atomic: `{_src(v)}` in `{where}`')
+        case BinOp(left, Add() | Sub(), right):
+            for side in (left, right):
+                if not _is_atomic_if(side):
+                    problems.append(f'operand of {"+" if isinstance(e.op, Add) else "-"} '
+                                    f'is not atomic: `{_src(side)}` in `{where}`')
+        case ast.Compare(left, _, [right]) if _is_cmp(e):
+            for side in (left, right):
+                if not _is_atomic_if(side):
+                    problems.append(f'operand of a comparison is not atomic: `{_src(side)}` in `{where}`')
+        case ast.IfExp(test, body, orelse):
+            _mon_if_test(test, e, problems)
+            for x in (test, body, orelse):
+                _mon_if_exp(x, problems)
+        case _ if isinstance(e, Begin):
+            _mon_if_stmts(e.body, problems)
+            _mon_if_exp(e.result, problems)
+        case ast.BoolOp():
+            problems.append(f'`and`/`or` should be gone after shrink: `{where}`')
+        case _:
+            problems.append(f'not an L_If^mon expression: `{where}`')
+
+
+def _mon_if_test(test: expr, node: ast.AST, problems: list[str]) -> None:
+    if _is_generated(test):
+        problems.append(f'the condition of an if was replaced by the temporary `{_src(test)}` '
+                        f'(section 5.6 says not to; explicate_control needs the comparison '
+                        f'itself to jump on it directly): `{_src(node).splitlines()[0]}`')
+
+
+def _mon_if_stmts(ss: list[stmt], problems: list[str]) -> None:
+    for s in ss:
+        match s:
+            case Expr(Call(Name('print'), [e])):
+                if not _is_atomic_if(e):
+                    problems.append(f'argument of print is not atomic: `{_src(e)}`')
+            case Expr(e):
+                _mon_if_exp(e, problems)
+            case Assign([Name(_)], e):
+                _mon_if_exp(e, problems)
+            case ast.If(test, body, orelse):
+                _mon_if_test(test, s, problems)
+                _mon_if_exp(test, problems)
+                _mon_if_stmts(body, problems)
+                _mon_if_stmts(orelse, problems)
+            case _:
+                problems.append(f'not an L_If^mon statement: `{_src(s)}`')
+
+
+def check_Lif_mon(p: object) -> list[str]:
+    """Output of remove_complex_operands (figure 5.11, section 5.6)."""
+    if not isinstance(p, Module):
+        return [f'expected a Module, got {type(p).__name__}']
+    problems: list[str] = []
+    _mon_if_stmts(p.body, problems)
+    return problems
+
+
+def _label_problem(label: object, what: str) -> str | None:
+    if not isinstance(label, str):
+        return f'{what} {label!r} is not a string'
+    if label.startswith('_'):
+        return (f'{what} `{label}` starts with "_". Don\'t call label_name() in your passes: on '
+                f'macOS it adds a "_", and X86Program printing adds another one, so the '
+                f'interpreters can\'t find `start`. Use plain names; printing adds the "_".')
+    return None
+
+
+def _cif_exp(e: expr, where: str, problems: list[str]) -> None:
+    """exp in figure 5.8, plus `not atm` (section 5.8 translates it)."""
+    match e:
+        case _ if _is_atomic_if(e) or _is_input_int(e):
+            pass
+        case UnaryOp(USub() | ast.Not(), v) if _is_atomic_if(v):
+            pass
+        case BinOp(left, Add() | Sub(), right) if _is_atomic_if(left) and _is_atomic_if(right):
+            pass
+        case ast.Compare(left, _, [right]) if _is_cmp(e) and _is_atomic_if(left) and _is_atomic_if(right):
+            pass
+        case _:
+            problems.append(f'not a C_If expression: `{_src(e)}` in `{where}`')
+
+
+def check_Cif(p: object) -> list[str]:
+    """Output of explicate_control (figure 5.8): a CProgram mapping labels
+    to blocks; each block is statements followed by one tail."""
+    if not isinstance(p, CProgram):
+        return [f'expected a CProgram, got {type(p).__name__}']
+    if not isinstance(p.body, dict):
+        return [f'CProgram body should be a dict (label -> statements), got {type(p.body).__name__}']
+    problems: list[str] = []
+    labels = set(p.body)
+    for label in labels:
+        if (msg := _label_problem(label, 'block label')) is not None:
+            problems.append(msg)
+    if 'start' not in labels:
+        problems.append(f'there is no "start" block (labels: {", ".join(sorted(map(str, labels)))})')
+
+    def goto_ok(g: stmt) -> bool:
+        if not isinstance(g, Goto):
+            return False
+        if g.label not in labels:
+            problems.append(f'goto {g.label}, but there is no block with that label')
+        return True
+
+    for label, ss in p.body.items():
+        if not ss:
+            problems.append(f'block {label} is empty (it needs at least a tail: return, goto, or if)')
+            continue
+        *stmts, tail = ss
+        for s in stmts:
+            where = _src(s)
+            match s:
+                case Expr(Call(Name('print'), [e])):
+                    if not _is_atomic_if(e):
+                        problems.append(f'argument of print is not atomic: `{where}`')
+                case Expr(e):
+                    _cif_exp(e, where, problems)
+                case Assign([Name(_)], e):
+                    _cif_exp(e, where, problems)
+                case Return() | Goto() | ast.If():
+                    problems.append(f'block {label}: `{where.splitlines()[0]}` is a tail, so it must be '
+                                    'the last statement of its block')
+                case _:
+                    problems.append(f'not a C_If statement: `{where}`')
+        match tail:
+            case Return(value) if value is not None:
+                _cif_exp(value, _src(tail), problems)
+            case Goto():
+                goto_ok(tail)
+            case ast.If(test, [thn], [els]) if _is_cmp(test):
+                assert isinstance(test, ast.Compare)
+                if not (_is_atomic_if(test.left) and _is_atomic_if(test.comparators[0])):
+                    problems.append(f'operands of the comparison must be atomic: `{_src(test)}`')
+                if not (goto_ok(thn) and goto_ok(els)):
+                    problems.append(f'block {label}: both branches of an if must be a single goto')
+            case ast.If(test, _, _):
+                problems.append(f'block {label}: the condition of an if must be a comparison, and '
+                                f'each branch a single goto: `if {_src(test)}: ...`')
+            case _:
+                problems.append(f'block {label} must end with return, goto, or if; it ends with '
+                                f'`{_src(tail)}`')
+    return problems
+
+
+def _count_effects(nodes: list[ast.AST]) -> tuple[int, int]:
+    """Number of print(...) and input_int() calls."""
+    prints = inputs = 0
+    for n in nodes:
+        for x in ast.walk(n):
+            if isinstance(x, Call) and isinstance(x.func, Name):
+                prints += x.func.id == 'print'
+                inputs += x.func.id == 'input_int'
+    return prints, inputs
+
+
+def _begin_aware_nodes(p: Module) -> list[ast.AST]:
+    """ast.walk doesn't know Begin's fields; flatten Begins into statements."""
+    out: list[ast.AST] = []
+
+    def visit(n: ast.AST) -> None:
+        if isinstance(n, Begin):
+            for s in n.body:
+                visit(s)
+            visit(n.result)
+            return
+        out.append(n)
+        for child in ast.iter_child_nodes(n):
+            visit(child)
+    for s in p.body:
+        visit(s)
+    return [n for n in out if isinstance(n, Call)]
+
+
+def check_no_duplication(before: object, after: object) -> list[str]:
+    """explicate_control must never copy code (section 5.7): a continuation
+    used by two branches goes in its own block, reached by goto. So the
+    C_If program can't have more print or input_int calls than its input."""
+    if not isinstance(before, Module) or not isinstance(after, CProgram):
+        return []
+    p0, i0 = _count_effects(_begin_aware_nodes(before))
+    blocks: list[ast.AST] = [s for ss in after.body.values() for s in ss]
+    p1, i1 = _count_effects(blocks)
+    problems = []
+    if p1 > p0:
+        problems.append(f'the program has {p0} print call(s) but the C_If output has {p1}: '
+                        'code was duplicated. Use create_block so both branches goto one copy (section 5.7)')
+    if i1 > i0:
+        problems.append(f'the program has {i0} input_int call(s) but the C_If output has {i1}: '
+                        'code was duplicated. Use create_block so both branches goto one copy (section 5.7)')
+    return problems
+
+
+def _blocks(p: object, problems: list[str]) -> dict[str, list[instr]]:
+    if not isinstance(p, X86Program):
+        problems.append(f'expected an X86Program, got {type(p).__name__}')
+        return {}
+    if not isinstance(p.body, dict):
+        problems.append('in chapter 5 the X86Program body is a dict of blocks (label -> instructions), '
+                        'not a list (figure 5.10)')
+        return {}
+    return p.body
+
+
+def _check_arg_if(a: arg, i: instr, allow_vars: bool, problems: list[str]) -> None:
+    if isinstance(a, ByteReg):
+        if a.id not in BYTE_REGISTERS:
+            problems.append(f'unknown byte register %{a.id}: `{str(i).strip()}`')
+    else:
+        _check_arg(a, i, allow_vars, problems)
+
+
+def _check_blocks(blocks: dict[str, list[instr]], allow_vars: bool, final: bool,
+                  problems: list[str]) -> None:
+    labels = set(blocks)
+    for label in labels:
+        if (msg := _label_problem(label, 'block label')) is not None:
+            problems.append(msg)
+
+    def target_ok(label: str, i: instr) -> None:
+        if (msg := _label_problem(label, 'jump target')) is not None:
+            problems.append(msg)
+        elif label not in labels and not (label == 'conclusion' and not final):
+            problems.append(f'`{str(i).strip()}` jumps to a block that does not exist')
+
+    for label, body in blocks.items():
+        if not body:
+            problems.append(f'block {label} is empty')
+            continue
+        for i in body:
+            match i:
+                case Instr(name, args):
+                    if name not in INSTR_ARITY_IF:
+                        problems.append(f'unknown instruction "{name}": `{str(i).strip()}`')
+                    elif len(args) != INSTR_ARITY_IF[name]:
+                        problems.append(f'{name} takes {INSTR_ARITY_IF[name]} argument(s): `{str(i).strip()}`')
+                    for a in args:
+                        _check_arg_if(a, i, allow_vars, problems)
+                    if name.startswith('set') and not (args and isinstance(args[0], ByteReg)):
+                        problems.append(f'set{name[3:]} writes one byte, so its argument must be a '
+                                        f'byte register like %al (ByteReg): `{str(i).strip()}`')
+                    if name == 'movzbq' and not (args and isinstance(args[0], ByteReg)):
+                        problems.append(f'movzbq moves from a byte register like %al (ByteReg): `{str(i).strip()}`')
+                case Callq(func, num_args):
+                    if not isinstance(func, str) or not isinstance(num_args, int):
+                        problems.append(f'bad callq: {i!r}')
+                case Jump(target):
+                    target_ok(target, i)
+                case JumpIf(cc, target):
+                    if cc not in CONDITION_CODES:
+                        problems.append(f'unknown condition code "{cc}" in `{str(i).strip()}`')
+                    target_ok(target, i)
+                case _:
+                    problems.append(f'not an x86 instruction: {i!r}')
+        last = body[-1]
+        if not (isinstance(last, Jump) or _is(last, 'retq')):
+            problems.append(f'block {label} must end with a jmp (blocks can be laid out in any '
+                            f'order, so nothing can fall through); it ends with `{str(last).strip()}`')
+
+
+def check_x86_if_var(p: object) -> list[str]:
+    """Output of select_instructions (figure 5.10, section 5.8)."""
+    problems: list[str] = []
+    blocks = _blocks(p, problems)
+    if problems:
+        return problems
+    if 'start' not in blocks:
+        problems.append('there is no "start" block')
+    _check_blocks(blocks, allow_vars=True, final=False, problems=problems)
+    return problems
+
+
+def check_x86_if_homes(p: object) -> list[str]:
+    """Output of assign_homes: no variables left."""
+    problems: list[str] = []
+    blocks = _blocks(p, problems)
+    if not problems:
+        _check_blocks(blocks, allow_vars=False, final=False, problems=problems)
+    return problems
+
+
+def check_x86_if(p: object) -> list[str]:
+    """Output of patch_instructions (sections 2.7, 4.5, 5.10)."""
+    problems = check_x86_if_homes(p)
+    blocks = _blocks(p, [])
+    for body in blocks.values():
+        _check_x86_int_rules(body, problems)
+        for i in body:
+            match i:
+                case Instr('movq', [a, b]) if a == b:
+                    problems.append(f'trivial move left in (delete it, section 4.5): `{str(i).strip()}`')
+                case Instr('cmpq', [_, Immediate()]):
+                    problems.append(f'the second argument of cmpq must not be an immediate '
+                                    f'(section 5.10): `{str(i).strip()}`')
+                case Instr('movzbq', [_, b]) if not isinstance(b, Reg) or isinstance(b, ByteReg):
+                    problems.append(f'the second argument of movzbq must be a (64-bit) register '
+                                    f'(section 5.10): `{str(i).strip()}`')
+    return problems
+
+
+def check_x86_if_final(p: object) -> list[str]:
+    """Output of prelude_and_conclusion (section 5.11): a `main` block with
+    the prelude ending in `jmp start`, and a `conclusion` block, with the
+    same frame rules as chapter 4."""
+    problems = check_x86_if(p)
+    blocks = _blocks(p, [])
+    if not blocks:
+        return problems
+    main, conclusion = blocks.get('main'), blocks.get('conclusion')
+    if main is None:
+        problems.append('there is no "main" block (the prelude goes there)')
+    if conclusion is None:
+        problems.append('there is no "conclusion" block (section 5.11)')
+    if main is None or conclusion is None:
+        return problems
+    if not (main and _is_jump(main[-1], 'start')):
+        problems.append('the main block should end with `jmp start`')
+        return problems
+    rest = [i for label, b in blocks.items() if label not in ('main', 'conclusion') for i in b]
+    return problems + _check_frame(main[:-1] + rest + conclusion)
+
+
+def _is_jump(i: instr, label: str) -> bool:
+    return isinstance(i, Jump) and i.label == label
+
+
+CHECKERS_CH5: dict[str, Callable[[object], list[str]]] = {
+    'shrink': check_Lif_shrunk,
+    'remove_complex_operands': check_Lif_mon,
+    'explicate_control': check_Cif,
+    'select_instructions': check_x86_if_var,
+    'assign_homes': check_x86_if_homes,
+    'patch_instructions': check_x86_if,
+    'prelude_and_conclusion': check_x86_if_final,
 }

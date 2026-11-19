@@ -1,7 +1,7 @@
-"""Progress scoreboard for chapters 2 and 4.
+"""Progress scoreboard for chapters 2, 4 and 5.
 
-Runs every test program in tests/var through the compiler's passes, in order,
-and checks two things after each pass:
+Runs every test program (tests/var, or tests/if for chapter 5) through the
+compiler's passes, in order, and checks two things after each pass:
 
   shape   the output is in the pass's target language (tools/shapes.py)
   output  running the output gives the same result as the original program
@@ -20,8 +20,16 @@ Chapter 4 (register allocation, compiler_register_allocator.py) adds:
   - "register poisoning": after every callq, the interpreter overwrites the
     caller-saved registers with junk, as a real call may
 
+Chapter 5 (Booleans and conditionals, compiler_conditionals.py) runs the
+tests in tests/if through the passes of figure 5.15, with the book's type
+checkers on the L_If and C_If outputs (like run-tests.py), the chapter 4
+allocation checks, a check that explicate_control doesn't duplicate code,
+book examples for liveness and interference across blocks, and the
+programs in tests/if_type_errors, which the type checker must reject.
+
     .venv/bin/python tools/progress.py              # chapter 2 scoreboard
     .venv/bin/python tools/progress.py --chapter 4  # chapter 4 scoreboard
+    .venv/bin/python tools/progress.py --chapter 5  # chapter 5 scoreboard
     .venv/bin/python tools/progress.py -v           # every failure
     .venv/bin/python tools/progress.py -k input     # only tests with "input" in the name
 """
@@ -43,34 +51,80 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)
 
+from interp_Cif import InterpCif  # noqa: E402
+from interp_Lif import InterpLif  # noqa: E402
 from interp_Lvar import InterpLvar  # noqa: E402
 from interp_x86.eval_x86 import interp_x86  # noqa: E402
+from type_check_Cif import TypeCheckCif  # noqa: E402
+from type_check_Lif import TypeCheckLif  # noqa: E402
 from type_check_Lvar import TypeCheckLvar  # noqa: E402
 from tools import regalloc_checks  # noqa: E402
 from tools.regalloc_checks import ExampleResult  # noqa: E402
-from tools.shapes import CHECKERS, CHECKERS_CH4, check_Lvar  # noqa: E402
+from tools.shapes import (CHECKERS, CHECKERS_CH4, CHECKERS_CH5, check_Lif,  # noqa: E402
+                          check_Lvar, check_no_duplication)
 
 TEST_DIR = os.path.join(ROOT, 'tests', 'var')
 BUILD_DIR = os.path.join(ROOT, 'build')
 
 Status = Literal['ok', 'shape', 'output', 'crash', 'todo', 'blocked']
 
-PASSES: list[str] = [
-    'remove_complex_operands',
-    'select_instructions',
-    'assign_homes',
-    'patch_instructions',
-    'prelude_and_conclusion',
-]
+Interp = Callable[[Any], None]
+
+
+def type_check_Lvar(p: Any) -> None:
+    TypeCheckLvar().type_check(p)
+
+
+def type_check_Lif(p: Any) -> None:
+    TypeCheckLif().type_check(p)
+
+
+def type_check_Cif(p: Any) -> None:
+    TypeCheckCif().type_check(p)
+
+
+def interp_Lvar(p: Any) -> None:
+    InterpLvar().interp(p)
+
+
+def interp_Lif(p: Any) -> None:
+    InterpLif().interp(p)
+
+
+def interp_Cif(p: Any) -> None:
+    InterpCif().interp(p)
+
+
+def interp_x86_poisoned(p: Any) -> None:
+    interp_x86(regalloc_checks.poison_calls(p))
 
 
 @dataclass
 class Chapter:
     number: int
     module: str                                         # where the Compiler class lives
-    section: dict[str, str]                             # pass -> book section
+    section: dict[str, str]                             # pass -> book section, in pipeline order
     checkers: dict[str, Callable[[object], list[str]]]  # pass -> shape checker
     regalloc: bool                                      # chapter 4 extras
+    tests: str = 'var'                                  # directory under tests/
+    language: str = 'L_Var'
+    source_check: Callable[[Module], list[str]] = check_Lvar
+    type_check: Callable[[Any], None] = type_check_Lvar
+    interps: dict[str, Interp] | None = None            # pass -> interpreter for its output
+    type_checks: dict[str, Callable[[Any], None]] | None = None  # pass -> type checker for its output
+
+    @property
+    def passes(self) -> list[str]:
+        return list(self.section)
+
+    def interp_for(self, p: str) -> Interp:
+        if self.interps and p in self.interps:
+            return self.interps[p]
+        if p == 'remove_complex_operands':
+            return interp_Lvar
+        if self.regalloc:
+            return interp_x86_poisoned
+        return interp_x86
 
 
 CHAPTERS = {
@@ -88,6 +142,20 @@ CHAPTERS = {
         'patch_instructions': '4.5',
         'prelude_and_conclusion': '4.6',
     }, CHECKERS_CH4, regalloc=True),
+    5: Chapter(5, 'compiler_conditionals', {
+        'shrink': '5.5',
+        'remove_complex_operands': '5.6',
+        'explicate_control': '5.7',
+        'select_instructions': '5.8',
+        'assign_homes': '5.9',
+        'patch_instructions': '5.10',
+        'prelude_and_conclusion': '5.11',
+    }, CHECKERS_CH5, regalloc=True, tests='if', language='L_If',
+        source_check=check_Lif, type_check=type_check_Lif,
+        interps={'shrink': interp_Lif, 'remove_complex_operands': interp_Lif,
+                 'explicate_control': interp_Cif},
+        type_checks={'shrink': type_check_Lif, 'remove_complex_operands': type_check_Lif,
+                     'explicate_control': type_check_Cif}),
 }
 
 
@@ -164,7 +232,7 @@ def same_output(actual: str, golden: str) -> bool:
 def run_test(path: str, ch: Chapter, make_compiler: Callable[[], Any]) -> TestResult:
     name = os.path.splitext(os.path.basename(path))[0]
     root = os.path.splitext(path)[0]
-    passes = {p: PassResult('blocked') for p in PASSES}
+    passes = {p: PassResult('blocked') for p in ch.passes}
 
     # Check the test itself first.
     if not os.path.exists(root + '.in'):
@@ -175,17 +243,17 @@ def run_test(path: str, ch: Chapter, make_compiler: Callable[[], Any]) -> TestRe
         program: Any = parse(read_text(path))
     except SyntaxError as ex:
         return TestResult(name, f'syntax error: {ex}', passes)
-    problems = check_Lvar(program)
+    problems = ch.source_check(program)
     if problems:
-        return TestResult(name, 'not an L_Var program: ' + problems[0], passes)
+        return TestResult(name, f'not an {ch.language} program: ' + problems[0], passes)
     try:
-        TypeCheckLvar().type_check(program)
+        ch.type_check(program)
     except Exception as ex:
         return TestResult(name, f'type error: {ex}', passes)
     golden = read_text(root + '.golden')
 
     c = make_compiler()
-    for p in PASSES:
+    for p in ch.passes:
         before = program
         try:
             program = getattr(c, p)(program)
@@ -199,6 +267,13 @@ def run_test(path: str, ch: Chapter, make_compiler: Callable[[], Any]) -> TestRe
         problems = ch.checkers[p](program)
         if not problems and ch.regalloc and p == 'assign_homes':
             problems = regalloc_checks.check_allocation(c, before, program)
+        if not problems and p == 'explicate_control':
+            problems = check_no_duplication(before, program)
+        if not problems and ch.type_checks and p in ch.type_checks:
+            try:
+                ch.type_checks[p](program)
+            except Exception as ex:
+                problems = [f'the output does not type check: {ex}']
         if problems:
             passes[p] = PassResult('shape', '\n'.join(problems[:5]))
             break
@@ -206,12 +281,8 @@ def run_test(path: str, ch: Chapter, make_compiler: Callable[[], Any]) -> TestRe
         try:
             if p == 'prelude_and_conclusion':
                 actual = run_executable(program, name, root + '.in')
-            elif p == 'remove_complex_operands':
-                actual = run_interp(InterpLvar().interp, program, root + '.in')
-            elif ch.regalloc:
-                actual = run_interp(interp_x86, regalloc_checks.poison_calls(program), root + '.in')
             else:
-                actual = run_interp(interp_x86, program, root + '.in')
+                actual = run_interp(ch.interp_for(p), program, root + '.in')
         except Exception as ex:
             passes[p] = PassResult('crash', f'running the output failed: {ex}')
             break
@@ -239,9 +310,10 @@ def status_word(statuses: Sequence[str], ok: int, failing: int) -> str:
     return 'in progress'
 
 
-def report_examples(examples: dict[str, list[ExampleResult]], verbose: bool) -> int:
-    """The chapter 4 book-example table. Returns the number of failures."""
-    print('\nBook examples (worked examples from sections 4.2-4.4)\n')
+def report_examples(examples: dict[str, list[ExampleResult]], sections: dict[str, str],
+                    title: str, verbose: bool) -> int:
+    """The book-example table. Returns the number of failures."""
+    print(f'\nBook examples ({title})\n')
     print(f'  {"step":<26}{"book":<7}{"passing":<10}status')
     print(f'  {"-" * 26}{"-" * 7}{"-" * 10}{"-" * 20}')
     failures = 0
@@ -250,7 +322,7 @@ def report_examples(examples: dict[str, list[ExampleResult]], verbose: bool) -> 
         ok = statuses.count('ok')
         failing = sum(s in ('wrong', 'crash') for s in statuses)
         failures += failing
-        print(f'  {step:<26}§{regalloc_checks.EXAMPLE_SECTION[step]:<6}'
+        print(f'  {step:<26}§{sections[step]:<6}'
               f'{f"{ok}/{len(results)}":<10}{status_word(statuses, ok, failing)}')
     for step, results in examples.items():
         broken = [r for r in results if r.status in ('wrong', 'crash')]
@@ -269,11 +341,11 @@ def report_examples(examples: dict[str, list[ExampleResult]], verbose: bool) -> 
 def report(results: list[TestResult], ch: Chapter, verbose: bool) -> int:
     good = [r for r in results if not r.error]
     bad = [r for r in results if r.error]
-    print(f'\nChapter {ch.number} progress: {len(good)} tests in tests/var\n')
+    print(f'\nChapter {ch.number} progress: {len(good)} tests in tests/{ch.tests}\n')
     print(f'  {"pass":<26}{"book":<7}{"passing":<10}status')
     print(f'  {"-" * 26}{"-" * 7}{"-" * 10}{"-" * 20}')
     failures = 0
-    for p in PASSES:
+    for p in ch.passes:
         statuses = [r.passes[p].status for r in good]
         ok = statuses.count('ok')
         failing = sum(s in ('shape', 'output', 'crash') for s in statuses)
@@ -291,7 +363,7 @@ def report(results: list[TestResult], ch: Chapter, verbose: bool) -> int:
             print(f'  {r.name}: {r.error}')
 
     shown = 0
-    for p in PASSES:
+    for p in ch.passes:
         broken = [r for r in good if r.passes[p].status in ('shape', 'output', 'crash')]
         if not broken:
             continue
@@ -315,20 +387,50 @@ def main() -> int:
     ap.add_argument('-k', metavar='TEXT', default='', help='only tests whose name contains TEXT')
     ap.add_argument('-c', '--chapter', type=int, choices=sorted(CHAPTERS), default=2,
                     help='which chapter\'s compiler to check (default 2)')
-    ap.add_argument('--module', help='module with the Compiler class '
-                    '(default: compiler for chapter 2, compiler_register_allocator for 4)')
+    ap.add_argument('--module', help='module with the Compiler class (default: compiler '
+                    'for chapter 2, compiler_register_allocator for 4, compiler_conditionals for 5)')
     args = ap.parse_args()
     sys.setrecursionlimit(10000)
     ch = CHAPTERS[args.chapter]
     module = importlib.import_module(args.module or ch.module)
     make_compiler: Callable[[], Any] = module.Compiler
-    tests = sorted(os.path.join(TEST_DIR, f) for f in os.listdir(TEST_DIR)
+    test_dir = os.path.join(ROOT, 'tests', ch.tests)
+    tests = sorted(os.path.join(test_dir, f) for f in os.listdir(test_dir)
                    if f.endswith('.py') and args.k in f)
     example_failures = 0
-    if ch.regalloc:
-        example_failures = report_examples(regalloc_checks.run_examples(make_compiler()), args.verbose)
+    if ch.number == 4:
+        example_failures = report_examples(regalloc_checks.run_examples(make_compiler()),
+                                           regalloc_checks.EXAMPLE_SECTION,
+                                           'worked examples from sections 4.2-4.4', args.verbose)
+    elif ch.number == 5:
+        example_failures = report_examples(regalloc_checks.run_examples_ch5(make_compiler()),
+                                           regalloc_checks.EXAMPLE_SECTION_CH5,
+                                           'figures 5.12 and 5.14, and two more, as x86 blocks',
+                                           args.verbose)
+        example_failures += report_type_errors(ch)
     status = report([run_test(t, ch, make_compiler) for t in tests], ch, args.verbose)
     return 1 if status or example_failures else 0
+
+
+def report_type_errors(ch: Chapter) -> int:
+    """Exercise 5.1: programs in tests/<dir>_type_errors must be rejected by
+    the type checker. Returns the number that were wrongly accepted."""
+    d = os.path.join(ROOT, 'tests', ch.tests + '_type_errors')
+    if not os.path.isdir(d):
+        return 0
+    accepted = []
+    files = sorted(f for f in os.listdir(d) if f.endswith('.py'))
+    for f in files:
+        try:
+            ch.type_check(parse(read_text(os.path.join(d, f))))
+            accepted.append(f[:-3])
+        except Exception:
+            pass
+    print(f'\nType checker (exercise 5.1): rejects {len(files) - len(accepted)}/{len(files)} '
+          f'ill-typed programs in tests/{ch.tests}_type_errors')
+    for name in accepted:
+        print(f'  ✗ {name} was accepted, but it has a type error')
+    return len(accepted)
 
 
 if __name__ == '__main__':

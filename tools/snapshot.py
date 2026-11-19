@@ -1,8 +1,11 @@
 """Behavior snapshot for the support code.
 
 Prints a deterministic report covering: importing every module, running the
-Lvar interpreter and type checker on tests/, pretty-printing each test AST,
-and running the x86 interpreter on a small hand-written program. Diff the
+interpreter and type checker for each test directory's language on tests/
+(Lvar for tests/var, Lif for tests/if and tests/if_type_errors),
+pretty-printing each test AST, running the Cif interpreter and type checker
+on the book's figure 5.12 program, and running the x86 interpreter on a
+small hand-written program. Diff the
 output before and after a refactor to confirm nothing changed at runtime.
 
     .venv/bin/python tools/snapshot.py > /tmp/before.txt
@@ -41,12 +44,22 @@ for m in modules():
     except Exception as ex:
         print(m, "FAILED", type(ex).__name__, ex)
 
+from ast import Assign, BinOp, Add, Call, Compare, Constant, Eq, Expr, If, Lt, Name, Return
 from interp_Lvar import InterpLvar
 from type_check_Lvar import TypeCheckLvar
+from interp_Lif import InterpLif
+from type_check_Lif import TypeCheckLif
+from interp_Cif import InterpCif
+from type_check_Cif import TypeCheckCif
+from utils import CProgram, Goto
 from interp_x86.eval_x86 import interp_x86
 from x86_ast import X86Program, Instr, Immediate, Reg, Callq
 
+LANGS = {"var": (InterpLvar, TypeCheckLvar), "if": (InterpLif, TypeCheckLif),
+         "if_type_errors": (InterpLif, TypeCheckLif)}
+
 for d in sorted(os.listdir("tests")):
+    Interp, TypeCheck = LANGS[d]
     for f in sorted(os.listdir(os.path.join("tests", d))):
         if not f.endswith(".py"):
             continue
@@ -58,16 +71,18 @@ for d in sorted(os.listdir("tests")):
         print("str:", str(tree))
         print("repr:", repr(tree))
         try:
-            TypeCheckLvar().type_check(tree)
+            TypeCheck().type_check(tree)
             print("type_check: ok")
         except Exception as ex:
             print("type_check: FAILED", ex)
+        if not os.path.exists(root + ".in"):
+            continue  # type-error tests are never run
         out = io.StringIO()
         old_stdin = sys.stdin
         try:
             with open(root + ".in") as stdin, contextlib.redirect_stdout(out):
                 sys.stdin = stdin
-                InterpLvar().interp(tree)
+                Interp().interp(tree)
         except Exception:
             print("interp: FAILED\n" + traceback.format_exc())
         finally:
@@ -76,6 +91,33 @@ for d in sorted(os.listdir("tests")):
         print("interp output:", repr(out.getvalue()),
               "matches golden" if golden is not None and out.getvalue().strip() == golden.strip()
               else "golden: " + repr(golden))
+
+section("Cif: figure 5.12")
+def name(x: str) -> Name:
+    return Name(x)
+read = Call(Name("input_int"), [])
+cprog = CProgram({
+    "start": [Assign([name("x")], read), Assign([name("y")], read),
+              If(Compare(name("x"), [Lt()], [Constant(1)]), [Goto("block_6")], [Goto("block_7")])],
+    "block_6": [If(Compare(name("x"), [Eq()], [Constant(0)]), [Goto("block_4")], [Goto("block_5")])],
+    "block_7": [If(Compare(name("x"), [Eq()], [Constant(2)]), [Goto("block_4")], [Goto("block_5")])],
+    "block_4": [Assign([name("tmp")], BinOp(name("y"), Add(), Constant(2))), Goto("block_3")],
+    "block_5": [Assign([name("tmp")], BinOp(name("y"), Add(), Constant(10))), Goto("block_3")],
+    "block_3": [Expr(Call(Name("print"), [name("tmp")])), Return(Constant(0))],
+})
+print(str(cprog))
+TypeCheckCif().type_check(cprog)
+print("var_types:", sorted((k, repr(t)) for k, t in cprog.var_types.items()))
+for inputs in ("0\n5\n", "3\n5\n", "2\n5\n"):
+    out = io.StringIO()
+    old_stdin = sys.stdin
+    try:
+        sys.stdin = io.StringIO(inputs)
+        with contextlib.redirect_stdout(out):
+            InterpCif().interp(cprog)
+    finally:
+        sys.stdin = old_stdin
+    print("inputs", repr(inputs), "output:", repr(out.getvalue()))
 
 section("x86 interpreter")
 prog = X86Program([

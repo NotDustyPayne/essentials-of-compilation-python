@@ -21,6 +21,9 @@ Three kinds of check:
    each caller-saved register with garbage (except %rax after read_int,
    which holds the result), the way a real call is allowed to.
 
+Chapter 5 adds book examples made of several blocks (BLOCK_EXAMPLES), and
+the allocation checks compare block by block.
+
 None of this computes liveness or interference itself: the expected answers
 are the book's, written out by hand.
 """
@@ -33,8 +36,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from graph import UndirectedAdjList
-from x86_ast import (Callq, Deref, Immediate, Instr, Reg, Variable, X86Program,
-                     arg, instr, location)
+from x86_ast import (ByteReg, Callq, Deref, Immediate, Instr, Jump, JumpIf, Reg,
+                     Variable, X86Program, arg, instr, location)
 
 # Section 4.1 and the color numbering suggested in section 4.4.
 CALLER_SAVED = ['rax', 'rcx', 'rdx', 'rsi', 'rdi', 'r8', 'r9', 'r10', 'r11']
@@ -70,6 +73,13 @@ def name_of(loc: object) -> str:
 def body_of(p: X86Program) -> list[instr]:
     if isinstance(p.body, dict):
         return p.body.get('main', [])
+    return p.body
+
+
+def all_instrs(p: X86Program) -> list[instr]:
+    """Every instruction, from every block (chapter 5) or from the list."""
+    if isinstance(p.body, dict):
+        return [i for b in p.body.values() for i in b]
     return p.body
 
 
@@ -137,12 +147,31 @@ def variable_homes(before: X86Program, after: X86Program,
     """Line up the instructions before and after assign_homes and read off
     where each variable went. Section 4.4 assumes each variable gets exactly
     one location for the whole program."""
-    b, a = body_of(before), body_of(after)
-    if len(b) != len(a):
-        problems.append(f'assign_homes changed the number of instructions ({len(b)} -> {len(a)}); '
-                        'it should only replace variables (deleting moves is patch_instructions\' job)')
+    if isinstance(before.body, dict) != isinstance(after.body, dict):
+        problems.append('assign_homes changed the program body from a dict of blocks to a list '
+                        '(or the other way round)')
         return {}
+    if isinstance(before.body, dict) and isinstance(after.body, dict):
+        if set(before.body) != set(after.body):
+            problems.append(f'assign_homes changed the block labels: {fmt_set(before.body)} -> '
+                            f'{fmt_set(after.body)}')
+            return {}
+        pairs = [(before.body[k], after.body[k], f' in block {k}') for k in before.body]
+    else:
+        pairs = [(body_of(before), body_of(after), '')]
     homes: dict[str, arg] = {}
+    for b, a, where in pairs:
+        if len(b) != len(a):
+            problems.append(f'assign_homes changed the number of instructions{where} '
+                            f'({len(b)} -> {len(a)}); it should only replace variables '
+                            '(deleting moves is patch_instructions\' job)')
+            return {}
+        _match_homes(b, a, homes, problems)
+    return homes
+
+
+def _match_homes(b: list[instr], a: list[instr], homes: dict[str, arg],
+                 problems: list[str]) -> None:
     for ib, ia in zip(b, a):
         if not (isinstance(ib, Instr) and isinstance(ia, Instr)):
             continue
@@ -154,7 +183,6 @@ def variable_homes(before: X86Program, after: X86Program,
                 if x.id in homes and homes[x.id] != y:
                     problems.append(f'variable {x.id} is in two places: {homes[x.id]} and {y}')
                 homes.setdefault(x.id, y)
-    return homes
 
 
 def check_homes(homes: dict[str, arg], used_callee: object,
@@ -230,7 +258,7 @@ def check_allocation(c: Any, before: X86Program, after: object) -> list[str]:
     call_live: dict[str, str] = {}
     live, err = call_safely(lambda: c.uncover_live(before))
     if err is None and isinstance(live, dict):
-        for i in body_of(before):
+        for i in all_instrs(before):
             if isinstance(i, Callq):
                 for loc in live.get(i, set()):
                     if isinstance(loc, Variable):
@@ -492,4 +520,185 @@ EXAMPLE_SECTION = {
     'build_interference': '4.3',
     'color_graph': '4.4',
     'allocate_registers': '4.4',
+}
+
+
+# ---------------------------------------------------------------------------
+# Chapter 5 book examples: liveness and interference across blocks (5.9)
+# ---------------------------------------------------------------------------
+
+def cmpq(a: arg, b: arg) -> Instr:
+    return Instr('cmpq', [a, b])
+
+
+@dataclass
+class BlockExample:
+    """Like Example, for a program made of blocks. live_after has one entry
+    per instruction; None means "don't check" (used for jmp, whose live-after
+    set depends on a convention: the target's live-before set, or empty with
+    the target's set as its live-before)."""
+    name: str
+    where: str
+    blocks: dict[str, list[instr]]
+    live_after: dict[str, list[set[str] | None]]
+    edges: set[frozenset[str]]
+    vars_only: bool   # compare only variable-variable edges
+
+    def program(self) -> X86Program:
+        return X86Program({k: list(b) for k, b in self.blocks.items()})
+
+    def live_dict(self) -> LiveAfter:
+        def loc(n: str) -> location:
+            return Reg(n[1:]) if n.startswith('%') else Variable(n)
+        out: LiveAfter = {}
+        for k, b in self.blocks.items():
+            for i, want in zip(b, self.live_after[k]):
+                out[i] = {loc(n) for n in want} if want is not None else set()
+        return out
+
+
+def _rdi_call_conclusion(src: arg) -> list[instr]:
+    return [movq(src, r('rdi')), Callq('print_int', 1), movq(imm(0), r('rax')), Jump('conclusion')]
+
+
+# Variables only: whether %rax/%al count as locations, and what is live
+# before `jmp conclusion`, are implementation choices.
+BLOCK_EXAMPLES: list[BlockExample] = [
+    BlockExample(
+        'if expression', 'figure 5.14',
+        {
+            'start': [Callq('read_int', 0), movq(r('rax'), v('tmp_0')), cmpq(imm(1), v('tmp_0')),
+                      JumpIf('e', 'block_3'), Jump('block_4')],
+            'block_3': [movq(imm(42), v('tmp_1')), Jump('block_2')],
+            'block_4': [movq(imm(0), v('tmp_1')), Jump('block_2')],
+            'block_2': _rdi_call_conclusion(v('tmp_1')),
+        },
+        {
+            'start': [S(), S('tmp_0'), S(), S(), None],
+            'block_3': [S('tmp_1'), None],
+            'block_4': [S('tmp_1'), None],
+            'block_2': [S(), S(), S(), None],
+        },
+        set(), vars_only=True,
+    ),
+    BlockExample(
+        'nested if, blocks out of order', 'figure 5.12, compiled to x86',
+        # The dict order is deliberately not a (reverse) topological order:
+        # uncover_live has to work out the order itself (section 5.9.1).
+        {
+            'start': [Callq('read_int', 0), movq(r('rax'), v('x')), Callq('read_int', 0),
+                      movq(r('rax'), v('y')), cmpq(imm(1), v('x')),
+                      JumpIf('l', 'block_6'), Jump('block_7')],
+            'block_3': _rdi_call_conclusion(v('tmp')),
+            'block_6': [cmpq(imm(0), v('x')), JumpIf('e', 'block_4'), Jump('block_5')],
+            'block_4': [movq(v('y'), v('tmp')), addq(imm(2), v('tmp')), Jump('block_3')],
+            'block_7': [cmpq(imm(2), v('x')), JumpIf('e', 'block_4'), Jump('block_5')],
+            'block_5': [movq(v('y'), v('tmp')), addq(imm(10), v('tmp')), Jump('block_3')],
+        },
+        {
+            'start': [S(), S('x'), S('x'), S('x', 'y'), S('x', 'y'), S('x', 'y'), None],
+            'block_3': [S(), S(), S(), None],
+            # After `je block_4` comes `jmp block_5`: both need y.
+            'block_6': [S('y'), S('y'), None],
+            'block_4': [S('tmp'), S('tmp'), None],
+            'block_7': [S('y'), S('y'), None],
+            'block_5': [S('tmp'), S('tmp'), None],
+        },
+        # x is live across the second read_int, so it interferes with every
+        # caller-saved register.
+        E('x-y', *[f'x-{reg}' for reg in CALLER_SAVED_NAMES]), vars_only=False,
+    ),
+    BlockExample(
+        'conditional jump keeps b live', 'section 5.9.1 (tests/if/reg_jumpif_live.py)',
+        # b is used only at the target of `jl`. Using only the next
+        # instruction's live-before set would make b look dead, and lose the
+        # edge b -- c.
+        {
+            'start': [Callq('read_int', 0), movq(r('rax'), v('a')), Callq('read_int', 0),
+                      movq(r('rax'), v('b')), movq(v('a'), v('c')), addq(imm(10), v('c')),
+                      cmpq(imm(5), v('c')), JumpIf('l', 'block_1'), Jump('block_2')],
+            'block_2': _rdi_call_conclusion(v('c')),
+            'block_1': _rdi_call_conclusion(v('b')),
+        },
+        {
+            'start': [S(), S('a'), S('a'), S('a', 'b'), S('b', 'c'), S('b', 'c'), S('b', 'c'),
+                      S('c'), None],
+            'block_2': [S(), S(), S(), None],
+            'block_1': [S(), S(), S(), None],
+        },
+        E('a-b', 'b-c', *[f'a-{reg}' for reg in CALLER_SAVED_NAMES]), vars_only=False,
+    ),
+    BlockExample(
+        'new instructions', 'figure 5.10: cmpq, set, movzbq, xorq',
+        # b = not (x < 3); c = b + y. cmpq only reads; xorq reads and writes
+        # b; movzbq writes b (like movq, section 5.9.2).
+        {
+            'start': [movq(imm(5), v('x')), movq(imm(9), v('y')), cmpq(imm(3), v('x')),
+                      Instr('setl', [ByteReg('al')]), Instr('movzbq', [ByteReg('al'), v('b')]),
+                      Instr('xorq', [imm(1), v('b')]), movq(v('b'), v('c')), addq(v('y'), v('c')),
+                      *_rdi_call_conclusion(v('c'))],
+        },
+        {
+            'start': [S('x'), S('x', 'y'), S('y'), S('y'), S('b', 'y'), S('b', 'y'), S('c', 'y'),
+                      S('c'), S(), S(), S(), None],
+        },
+        E('x-y', 'b-y', 'c-y'), vars_only=True,
+    ),
+]
+
+
+def check_uncover_live_blocks(c: Any, ex: BlockExample) -> ExampleResult:
+    p = ex.program()
+    live, err = call_safely(lambda: c.uncover_live(p))
+    problems: list[str] = []
+    if err is None:
+        if not isinstance(live, dict):
+            problems.append(f'uncover_live should return a dict (instruction -> live-after set), '
+                            f'got {type(live).__name__}')
+        else:
+            assert isinstance(p.body, dict)
+            for label, body in p.body.items():
+                for k, (i, want) in enumerate(zip(body, ex.live_after[label]), 1):
+                    if want is None:
+                        continue
+                    if i not in live:
+                        problems.append(f'{label} line {k} `{str(i).strip()}`: no live-after set')
+                        continue
+                    got = {name_of(x) for x in live[i] if isinstance(x, Variable)}
+                    if got != want:
+                        problems.append(f'{label} line {k} `{str(i).strip()}`: live-after variables '
+                                        f'should be {fmt_set(want)}, got {fmt_set(got)}')
+    return _result(ex.name, err, problems)
+
+
+def check_build_interference_blocks(c: Any, ex: BlockExample) -> ExampleResult:
+    p = ex.program()
+    live = ex.live_dict()
+    g, err = call_safely(lambda: c.build_interference(p, live))
+    problems: list[str] = []
+    if err is None:
+        if not hasattr(g, 'edges'):
+            problems.append(f'build_interference should return an UndirectedAdjList, got {type(g).__name__}')
+        else:
+            got = variable_edges(g)
+            want = ex.edges
+            if ex.vars_only:
+                got = {e for e in got if not any(n.startswith('%') for n in e)}
+            for e in sorted(want - got, key=fmt_edge):
+                problems.append(f'missing edge {fmt_edge(e)}')
+            for e in sorted(got - want, key=fmt_edge):
+                problems.append(f'extra edge {fmt_edge(e)}')
+    return _result(ex.name, err, problems)
+
+
+def run_examples_ch5(c: Any) -> dict[str, list[ExampleResult]]:
+    return {
+        'uncover_live': [check_uncover_live_blocks(c, ex) for ex in BLOCK_EXAMPLES],
+        'build_interference': [check_build_interference_blocks(c, ex) for ex in BLOCK_EXAMPLES],
+    }
+
+
+EXAMPLE_SECTION_CH5 = {
+    'uncover_live': '5.9.1',
+    'build_interference': '5.9.2',
 }

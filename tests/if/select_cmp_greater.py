@@ -1,0 +1,6 @@
+x = input_int()
+y = input_int()
+print((1 if x < y else 0) + (2 if x <= y else 0) + (4 if x > y else 0)
+      + (8 if x >= y else 0) + (16 if x == y else 0) + (32 if x != y else 0)
+      + (64 if y < x else 0) + (128 if y <= x else 0) + (256 if y > x else 0)
+      + (512 if y >= x else 0) + (1024 if y == x else 0) + (2048 if y != x else 0))

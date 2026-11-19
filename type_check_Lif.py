@@ -1,6 +1,13 @@
+import typing
 from ast import *
-from type_check_Lvar import TypeCheckLvar
+from type_check_Lvar import TypeCheckLvar, TypeEnv
 from utils import *
+
+# combine_types is used on two kinds of type: an expression's (a Type), and
+# a statement list's (Type | None: None unless the statements end in a
+# `return`, which arrives in chapter 8). This TypeVar says "the result has
+# the same kind as the arguments", so both uses type check.
+MaybeType = typing.TypeVar('MaybeType', Type, Type | None)
 
 # This is the type checker for Lif and LmonIf.
 
@@ -9,7 +16,7 @@ class TypeCheckLif(TypeCheckLvar):
   # The following is not needed until Larray, for bounds checking,
   # but I don't want to have to redefine the type checking code
   # for IfExp and If. -eremy
-  def combine_types(self, t1, t2):
+  def combine_types(self, t1: MaybeType, t2: MaybeType) -> MaybeType:
     match (t1, t2):
       case (Bottom(), _):
         return t2
@@ -17,8 +24,8 @@ class TypeCheckLif(TypeCheckLvar):
         return t1
       case _:
         return t1
-  
-  def type_check_exp(self, e, env):
+
+  def type_check_exp(self, e: expr, env: TypeEnv) -> Type:
     match e:
       case Constant(value) if isinstance(value, bool):
         return BoolType()
@@ -32,7 +39,7 @@ class TypeCheckLif(TypeCheckLvar):
       case UnaryOp(Not(), v):
         t = self.type_check_exp(v, env)
         self.check_type_equal(t, BoolType(), v)
-        return BoolType() 
+        return BoolType()
       case BoolOp(op, values):
         left = values[0]; right = values[1]
         l = self.type_check_exp(left, env)
@@ -55,15 +62,16 @@ class TypeCheckLif(TypeCheckLvar):
       #   t = self.type_check_exp(rhs, env)
       #   new_env = dict(env); new_env[x] = t
       #   return self.type_check_exp(body, new_env)
+      # Begin is in L_If^mon, the output of remove_complex_operands (section 5.6).
       case Begin(ss, e):
         self.type_check_stmts(ss, env)
         return self.type_check_exp(e, env)
       case _:
         return super().type_check_exp(e, env)
 
-  def type_check_stmts(self, ss, env):
+  def type_check_stmts(self, ss: list[stmt], env: TypeEnv) -> Type | None:
     if len(ss) == 0:
-      return
+      return None
     match ss[0]:
       case If(test, body, orelse):
         test_t = self.type_check_exp(test, env)

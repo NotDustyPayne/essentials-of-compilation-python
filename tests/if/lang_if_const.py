@@ -1,0 +1,9 @@
+# if on the constants True and False.
+if True:
+    print(1)
+else:
+    print(2)
+if False:
+    print(3)
+else:
+    print(4)

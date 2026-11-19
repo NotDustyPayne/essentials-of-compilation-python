@@ -3,7 +3,7 @@ import sys
 from sys import platform
 import ast
 from ast import *
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import typing
 from typing import Any, Callable, Iterable, Mapping
 
@@ -697,6 +697,9 @@ class Uninitialized(expr):
 class CProgram:
     __match_args__ = ("body",)
     body: dict[str, list[stmt]]
+    # Variable name -> type. Filled in by TypeCheckCif.type_check (chapter 5);
+    # later chapters' select_instructions use it.
+    var_types: dict[str, Type] = field(default_factory=dict, repr=False, compare=False)
 
     def __str__(self) -> str:
         result = []
