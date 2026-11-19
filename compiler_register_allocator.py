@@ -239,4 +239,31 @@ class Compiler(compiler.Compiler):
     ############################################################################
 
     def prelude_and_conclusion(self, p: X86Program) -> X86Program:
-        raise NotImplementedError
+
+        assert isinstance(p.body, list)
+        assert p.stack_space is not None
+        assert p.used_callee is not None
+        assert p.stack_space is not None
+
+        callee_list = list(p.used_callee)
+
+        prelude : list[instr] = [
+            Instr('pushq', [Reg('rbp')]),
+            Instr('movq', [Reg('rsp'), Reg('rbp')])
+        ] # need the other things
+
+        for r in callee_list:
+            prelude.append(Instr('pushq', [r]))
+
+        prelude.append(Instr('subq', [Immediate(p.stack_space), Reg('rsp')]))
+
+        conclusion : list[instr] = [Instr('addq', [Immediate(p.stack_space), Reg('rsp')])]
+
+        callee_list.reverse()
+        for r in callee_list:
+            conclusion.append(Instr('popq', [r]))
+        conclusion.append(Instr('popq', [Reg('rbp')]))
+        conclusion.append(Instr('retq', []))
+
+
+        return X86Program(body = prelude + p.body + conclusion, stack_space=p.stack_space, used_callee=p.used_callee)
