@@ -53,7 +53,48 @@ class Compiler(compiler_register_allocator.Compiler):
 
     def shrink(self, p: Module) -> Module:
         """Replace `and` and `or` with if expressions (exercise 5.2)."""
-        raise NotImplementedError
+        stmts_shrinked :list[stmt] = []
+
+        for statement in p.body:
+            stmts_shrinked.append(self.shrink_statement(statement))
+
+        return Module(body = stmts_shrinked, type_ignores=p.type_ignores)
+
+    def shrink_statement(self, statement: stmt) -> stmt:
+        match statement:
+            case If(test, body, or_else):
+                shrunk_body = [self.shrink_statement(b) for b in body]
+                shrunk_or_else = [self.shrink_statement(b) for b in or_else]
+                return If(self.shrink_expr(test), shrunk_body, shrunk_or_else)
+            case Assign([name], exp):
+                return Assign([name], self.shrink_expr(exp))
+            case Expr(Call(Name('print'),[exp])):
+                return Expr(Call(Name('print'),[self.shrink_expr(exp)], []))
+            case Expr(exp):
+                return Expr(self.shrink_expr(exp))
+            case _:
+                raise Exception("error in shrink_statement")
+
+    def shrink_expr(self, e: expr) -> expr:
+        match e:
+            case BoolOp(And(), [e1, e2]):
+                return IfExp(self.shrink_expr(e1),self.shrink_expr(e2),Constant(False))
+            case BoolOp(Or(), [e1, e2]):
+                return IfExp(self.shrink_expr(e1),Constant(True),self.shrink_expr(e2))
+            case UnaryOp(USub(), exp):
+                return UnaryOp(USub(), self.shrink_expr(exp))
+            case BinOp(e1, Add(), e2):
+                return BinOp(self.shrink_expr(e1), Add(), self.shrink_expr(e2))
+            case BinOp(e1, Sub(), e2):
+                return BinOp(self.shrink_expr(e1), Sub(), self.shrink_expr(e2))
+            case UnaryOp(Not(), exp):
+                return UnaryOp(Not(), self.shrink_expr(exp))
+            case Compare(e1, [cmp], [e2]):
+                return Compare(self.shrink_expr(e1), [cmp], [self.shrink_expr(e2)])
+            case IfExp(e1, e2, e3):
+                return IfExp(self.shrink_expr(e1), self.shrink_expr(e2), self.shrink_expr(e3))
+            case _:
+                return e
 
     ############################################################################
     # Remove Complex Operands (section 5.6): inherited. Add the new cases
