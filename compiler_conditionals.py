@@ -39,6 +39,7 @@ from x86_ast import arg as X86Arg
 from graph import DirectedAdjList, UndirectedAdjList, topological_sort, transpose
 import compiler_register_allocator
 from compiler_register_allocator import LiveAfter
+from compiler import Temporaries, Binding
 
 # C_If blocks: label -> statements, the last of which is the tail
 # (return, goto, or if with a goto in each branch).
@@ -101,6 +102,61 @@ class Compiler(compiler_register_allocator.Compiler):
     # (Constant(bool), not, comparisons, IfExp, If, Begin) to rco_exp and
     # rco_stmt (exercise 5.3).
     ############################################################################
+
+    def rco_stmt(self, s: stmt) -> list[stmt]:
+        match s:
+            case If(exp, s1, s2):
+                e_atm, e_temps = self.rco_exp(exp, False)
+
+                s1_statements : list[stmt] = []
+                s2_statements : list[stmt] = []
+
+                for statement in s1:
+                    s1_statements.extend(self.rco_stmt(statement))
+                for statement in s2:
+                    s2_statements.extend(self.rco_stmt(statement))
+
+                return [If(make_begin(e_temps, e_atm), s1_statements, s2_statements)]
+            case _:
+                return super().rco_stmt(s)
+
+    def rco_exp(self, e: expr, need_atomic : bool) -> tuple[expr, Temporaries]:
+        match e:
+            case UnaryOp(Not(), exp):
+                atm, temps = self.rco_exp(exp, True)
+                if need_atomic:
+                    new_binding_name = Name(generate_name("tmp"))
+                    new_temp = new_binding_name, UnaryOp(Not(), atm)
+                    return new_binding_name, temps + [new_temp]
+                else:
+                    return UnaryOp(Not(), atm), temps
+            case Compare(e1, [cmp], [e2]):
+                l_atm, l_temps = self.rco_exp(e1, True)
+                r_atm, r_temps = self.rco_exp(e2, True)
+
+                if need_atomic:
+                    new_binding_name = Name(generate_name("tmp"))
+                    new_temp = new_binding_name, Compare(l_atm, [cmp], [r_atm])
+                    return new_binding_name, l_temps + r_temps + [new_temp]
+                else:
+                    return Compare(l_atm, [cmp], [r_atm]), l_temps + r_temps
+
+            case IfExp(e1, e2, e3):
+                e1_atm, e1_temps = self.rco_exp(e1, False)
+                e2_atm, e2_temps = self.rco_exp(e2, False)
+                e3_atm, e3_temps = self.rco_exp(e3, False)
+
+                rco_expr = IfExp(make_begin(e1_temps, e1_atm),make_begin(e2_temps, e2_atm), make_begin(e3_temps, e3_atm))
+
+                if need_atomic:
+                    new_binding_name = Name(generate_name("tmp"))
+                    new_temp = new_binding_name , rco_expr
+                    return new_binding_name, [new_temp]
+                else:
+                    return rco_expr, []
+
+            case _:
+                return super().rco_exp(e=e, need_atomic=need_atomic)
 
     ############################################################################
     # Explicate Control (section 5.7, figure 5.13)

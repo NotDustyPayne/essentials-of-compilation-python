@@ -40,11 +40,11 @@ class Compiler:
             case Call(Name('input_int'),[]):
                 if need_atomic:
                     new_binding_name = Name(generate_name("tmp"))
-                    new_temp = new_binding_name, Call(Name('input_int'),[])
+                    new_temp = new_binding_name, Call(Name('input_int'),[],[])
                     return new_binding_name, [new_temp]
 
                 else:
-                    return Call(Name('input_int'),[]) , []
+                    return Call(Name('input_int'),[],[]) , []
 
             case UnaryOp(USub(), exp):
                 atm, temps = self.rco_exp(exp, True)
