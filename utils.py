@@ -5,7 +5,7 @@ import ast
 from ast import *
 from dataclasses import dataclass, field
 import typing
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 # `from ast import *` also defines ast.TypeVar, so use the qualified name.
 A = typing.TypeVar('A')
@@ -640,7 +640,7 @@ def make_assigns(bs: Iterable[tuple[expr, expr]]) -> list[stmt]:
     return [Assign([x], rhs) for (x, rhs) in bs]
 
 
-def make_begin(bs: list[tuple[expr, expr]], e: expr) -> expr:
+def make_begin(bs: Sequence[tuple[expr, expr]], e: expr) -> expr:
     if len(bs) > 0:
         return Begin([Assign([x], rhs) for (x, rhs) in bs], e)
     else:

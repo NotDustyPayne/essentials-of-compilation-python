@@ -535,6 +535,9 @@ def _mon_if_exp(e: expr, problems: list[str]) -> None:
 
 
 def _mon_if_test(test: expr, node: ast.AST, problems: list[str]) -> None:
+    # Look through Begins: Begin([tmp.0 = x < y], tmp.0) hides the same problem.
+    while isinstance(test, Begin):
+        test = test.result
     if _is_generated(test):
         problems.append(f'the condition of an if was replaced by the temporary `{_src(test)}` '
                         f'(section 5.6 says not to; explicate_control needs the comparison '
